@@ -1,0 +1,11 @@
+html, body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0;
+
+  color: #000000;
+  background-color: #f1f1f1;
+
+  font-family: 'Roboto Condensed', sans-serif;
+}
