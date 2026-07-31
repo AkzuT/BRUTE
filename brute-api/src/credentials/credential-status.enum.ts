@@ -1,0 +1,8 @@
+export enum CredentialStatus {
+  PENDING = "PENDING",
+  ACTIVATED = "ACTIVATED",
+  LOCKED = "LOCKED",
+  BLOCKED = "BLOCKED",
+  REACTIVATING = "REACTIVATING",
+  DISABLED = "DISABLED",
+}
