@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { EntityManager } from "typeorm";
 import { randomBytes, createHash } from "crypto";
 
@@ -81,15 +81,26 @@ export class TokenService {
         plainToken: string,
         type: TokenType,
         manager: EntityManager,
-    ): Promise<Token | null> {
+    ): Promise<Token> {
         const tokenHash = createHash("sha256").update(plainToken).digest("hex");
         const repo = manager.getRepository(Token);
 
-        const token = await repo.findOne({ where: { tokenHash, tokenType: type } });
+        const token = await repo.findOne({ 
+            where: { tokenHash, tokenType: type },
+            relations: ["credential", "credential.profile"],
+         });
 
-        if (!token || token.revoked || token.expiresAt.getTime() < Date.now()) {
-            return null;
-        } 
+        if (!token) {
+            throw new UnauthorizedException("Authentication Guard | VT-01: Invalid operation.");
+        }
+
+        if (token.revoked) {
+            throw new UnauthorizedException("Authentication Guard | VT-02: Invalid operation.");
+        }
+
+        if (token.expiresAt.getTime() < Date.now()) {
+            throw new UnauthorizedException("Authentication Guard | VT-03: Invalid operation.");
+        }
 
         return token;
     }

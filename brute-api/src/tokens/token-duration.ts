@@ -1,7 +1,7 @@
 import { Token } from "./entities/token-entity";
 import { TokenType } from "./token-type.enum";
 
-export const FIXED_TOKEN_DURATION_MS: Partial<Record<TokenType, number>> = {
+export const FIXED_TOKEN_DURATIONS_MS: Partial<Record<TokenType, number>> = {
     [TokenType.ACTIVATION]: 24 * 60 * 60 * 1000,
     [TokenType.PASSWORD_RESET]: 1 * 60 * 60 * 1000,
     [TokenType.SESSION]: 15 * 60 * 1000,
