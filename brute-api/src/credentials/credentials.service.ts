@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, NotFoundException, InternalServerErrorException, BadRequestException } from "@nestjs/common";
 
-import { DataSource, EntityManager, IsNull } from "typeorm";
+import { DataSource, EntityManager, Not, IsNull } from "typeorm";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 import * as bcrypt from "bcryptjs";
@@ -289,7 +289,8 @@ export class CredentialsService {
 
                 const credReference = await repo.findOne({
                     where: {
-                        identifier: dto.identifier
+                        identifier: dto.identifier,
+                        status: Not(CredentialStatus.PENDING)
                     }
                 });
 
