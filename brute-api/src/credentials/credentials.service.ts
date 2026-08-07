@@ -141,7 +141,7 @@ export class CredentialsService {
 
             const decryptedKey = this.decrypt(credential.encryptedMfaSecret);
 
-            if (await otplib.verify({token: dto.otp, secret: decryptedKey})) {
+            if ((await otplib.verify({token: dto.otp, secret: decryptedKey})).valid) {
                 await repo.update(credential.credId, {
                     mfaEnrolled: true,
                     status: CredentialStatus.ACTIVATED
@@ -269,7 +269,7 @@ export class CredentialsService {
 
         const decryptedKey = this.decrypt(credential.encryptedMfaSecret);
 
-        const isValid = await otplib.verify({token: otp, secret: decryptedKey});
+        const { valid: isValid } = await otplib.verify({token: otp, secret: decryptedKey});
 
         if (!isValid) {
             await this.attemptFailed(credential, manager);
