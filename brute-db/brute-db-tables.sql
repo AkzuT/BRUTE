@@ -76,7 +76,7 @@ CREATE TABLE [dbo].[Credentials](
 
 	CONSTRAINT CHK_Credentials_FailedAttempts CHECK ([status] >= 0),
 
-	CONSTRAINT CHK_Status CHECK ([status] IN('PENDING', 'ACTIVATED', 'LOCKED', 'BLOCKED', 'DISABLED', 'REACTIVATING')),
+	CONSTRAINT CHK_Status CHECK ([status] IN('PENDING', 'ACTIVATED', 'LOCKED', 'BLOCKED', 'COMPROMISED', 'REACTIVATING', 'DISABLED')),
 
 	CONSTRAINT CHK_Credentials_ActivatedRequiresMFA CHECK ([status] <> 'ACTIVATED' OR [mfa_enrolled] = 1)
 )
