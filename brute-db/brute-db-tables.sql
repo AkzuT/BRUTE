@@ -103,6 +103,7 @@ CREATE TABLE [dbo].[Tokens](
 
 	CONSTRAINT CHK_Tokens_TokenType CHECK (token_type IN(
 			'ACTIVATION',
+			'PRE_AUTH',
 			'REFRESH',
 			'SESSION',
 			'PASSWORD_RESET',
