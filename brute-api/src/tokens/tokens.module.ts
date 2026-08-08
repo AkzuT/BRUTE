@@ -1,24 +1,14 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 
-import { UserModule } from "src/users/user.module";
-
-import { Token } from "./entities/token-entity";
-
-import { TokensService } from "./tokens.service";
+import { Token } from "./entities/token-entity"
+import { TokenService } from "./tokens.service";
 import { TokensController } from "./tokens.controller";
 
 @Module({
-  imports: [
-    UserModule,
-
-    TypeOrmModule.forFeature([
-      Token,
-    ]),
-  ],
-  providers: [TokensService],
+  imports: [TypeOrmModule.forFeature([Token])],
+  providers: [TokenService],
   controllers: [TokensController],
-
-  exports: [TokensService],
+  exports: [TokenService],
 })
 export class TokensModule {}
