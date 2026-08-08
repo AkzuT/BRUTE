@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { EntityManager } from "typeorm";
+import { EntityManager, In } from "typeorm";
 import { randomBytes, createHash } from "crypto";
 
 import { Token } from "./entities/token-entity"
@@ -113,5 +113,25 @@ export class TokenService {
     async revokeAllForCredential(credId: number, manager: EntityManager): Promise<void> {
         const repo = manager.getRepository(Token);
         await repo.update({ credId }, { revoked: true });
-    }   
+    }
+    
+    async revokeAllForCrendetialByType(
+        credId: number,
+        type: TokenType,
+        manager: EntityManager,
+    ): Promise<void> {
+        const repo = manager.getRepository(Token);
+        await repo.update({ credId, tokenType: type }, { revoked: true });
+    }
+
+    async hasLoggedInFromDevice(
+        credId: number,
+        userAgent: string,
+        manager: EntityManager,
+    ): Promise<boolean> {
+        const repo = manager.getRepository(Token);
+        return repo.exists({
+            where: { credId, userAgent, tokenType: In([TokenType.SESSION, TokenType.REFRESH]) },
+        });
+    }
 }
