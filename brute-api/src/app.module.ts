@@ -6,8 +6,15 @@ import { ScheduleModule } from "@nestjs/schedule";
 import { getEnvCors } from "./brute-api-config/env-config";
 
 import { UserModule } from "./users/user.module";
+import { User } from "./users/entities/user-entity";
+import { UserPhone } from "./users/entities/user-phone-entity";
+import { UserProfile } from "./users/entities/user-profile-entity";
+
 import { CredentialsModule } from "./credentials/credentials.module";
+import { Credential } from "./credentials/entities/credentials-entity";
+
 import { TokensModule } from "./tokens/tokens.module";
+import { Token } from "./tokens/entities/token-entity";
 
 import { MailerModule } from "./mailer/mailer.module";
 
@@ -39,7 +46,14 @@ import { CredentialsGuardModule } from "./credentials-guard/credentials-guard.mo
         database: process.env.DB_NAME,
         username: process.env.DB_USERNAME,
         password: process.env.DB_PASSWORD,
-        entities: [],
+        entities: [
+          User,
+          UserPhone,
+          UserProfile,
+
+          Credential,
+          Token
+        ],
         synchronize: false,
         options: {
           encrypt: false,
