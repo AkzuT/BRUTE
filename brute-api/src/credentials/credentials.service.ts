@@ -35,7 +35,7 @@ export class CredentialsService {
     encryp(text: string): Buffer {
         const iv = crypto.randomBytes(16);
 
-        const cipher = crypto.createCipheriv(this.algorithm, Buffer.from(this.encryptKey), iv);
+        const cipher = crypto.createCipheriv(this.algorithm, Buffer.from(this.encryptKey, "hex"), iv);
 
         let encrypted = cipher.update(text);
 
@@ -49,7 +49,7 @@ export class CredentialsService {
 
         const encryptedText = text.subarray(16);
 
-        const decipher = crypto.createDecipheriv(this.algorithm, Buffer.from(this.encryptKey), iv);
+        const decipher = crypto.createDecipheriv(this.algorithm, Buffer.from(this.encryptKey, "hex"), iv);
 
         let decrypted = decipher.update(encryptedText);
 
