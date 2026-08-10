@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        {{> styles}}
+    </head>
+    <body style="font-family: Roboto Condensed, sans-serif; line-height: 1.6; color: #000000">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ffffff;">
+            {{> header}}
+            <div class="info-case">
+                <h2>Hola, {{name}}.</h2>    
+                <p>
+                    Recibimos tu reporte informándonos que tu cuenta fue comprometida. A raíz de esto, 
+                    decidimos bloquear tu cuenta indefinidamente para evitar su uso fraudulento.
+                </p>
+                <p>
+                    Los protocolos de protección de BRUTE sugieren que tu correo, o aplicación de 2FA, 
+                    fueron comprometidos, ya que para completar los múltiples procesos que BRUTE cubre, 
+                    solicitan en su gran mayoría acceso a ambos, y el resto, a uno de ellos. Te sugerimos 
+                    asegurarte de que ambos se encuentran fuera de peligro siguiendo las pautas de seguridad 
+                    de los proveedores en cuestión.
+                </p>
+                <p style="text-align: center;">
+                    Para recuperar el acceso a tu cuenta, deberás ponerte en contacto con nuestro Soporte 
+                    para iniciar el proceso de desbloqueo y reactivación. 
+                </p>
+            </div>
+            {{> footer}}
+        </div>
+    </body>
+</html>

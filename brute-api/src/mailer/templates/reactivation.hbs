@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        {{> styles}}
+    </head>
+    <body style="font-family: Roboto Condensed, sans-serif; line-height: 1.6; color: #000000">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ffffff;">
+            {{> header}}
+            <div class="info-case">
+                <h2>Hola, {{name}}.</h2>    
+                <p>
+                    Recibimos una solicitud de reactivación para tu cuenta. Presiona el botón de abajo para 
+                    comenzar el proceso de activación.
+                </p>
+                <div class="button-case">
+                    <p style="text-align: center;">
+                        <a href="{{url}}" class="button" style="text-decoration: none;">REACTIVAR</a>
+                    </p>
+                </div>
+                <p style="text-align: center;">
+                    El enlace de reactivación es válido por <strong>24 horas</strong>. Si no reactivaste tu 
+                    cuenta durante ese periodo, tendrás que ponerte en contacto con nuestro Soporte.
+                </p>
+            </div>
+            {{> footer}}
+        </div>
+    </body>
+</html>
