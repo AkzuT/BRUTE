@@ -8,16 +8,18 @@
         <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ffffff;">
             {{> header}}
             <div class="info-case">
-                <h2>Hola, {{name}}.</h2>    
+                <h2>¡Hola, {{name}}!</h2>    
                 <p>
                     Recibimos una solicitud para cambiar tu correo a esta dirección. Por favor, presiona 
                     el botón de abajo para confirmar el cambio.
                 </p>
-                <p>
-                    <strong>Importante:</strong> Por motivos de seguridad, por favor, ten en consideración 
-                    que efectuar el cambio eliminará la información relacionada a tu 2FA, inhabilitando tu 
-                    acceso temporalmente hasta que vuelvas a reenlazar tu cuenta a tu 2FA.
-                </p>
+                <div class="special-case">
+                    <p style="margin: 0;">
+                        <strong>Importante:</strong> Por motivos de seguridad, por favor, ten en consideración 
+                        que efectuar el cambio eliminará la información relacionada a tu 2FA, inhabilitando tu 
+                        acceso temporalmente hasta que vuelvas a reenlazar tu cuenta a tu 2FA.
+                    </p>
+                </div>
                 <div class="button-case">
                     <p style="text-align: center;">
                         <a href="{{url}}" class="button" style="text-decoration: none;">CONFIRMAR CAMBIO</a>
