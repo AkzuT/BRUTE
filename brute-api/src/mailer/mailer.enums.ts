@@ -27,12 +27,17 @@ enum MailerURL {
 enum MailerEndpoint {
     UNPRIVILEGED_ACTIVATION = "unprivileged-activation",
     PRIVILEGED_ACTIVATION = "privileged-activation",
+
     PASSWORD_RESET = "password-reset",
     PASSWORD_CHANGE = "password-change",
+    PHONE_CHANGE = "phone-change",
+
     EMAIL_CHANGE = "email-change",
     EMAIL_CONFIRM_CHANGE = "email-confirmation-change",
-    PHONE_CHANGE = "phone-change",
+    MFA_RESET = "mfa-reset",
+
     FRAUD_FLAG = "fraud-flag",
+    
     REACTIVATION = "reactivation"
 }
 

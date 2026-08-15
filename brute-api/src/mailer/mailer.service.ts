@@ -17,30 +17,32 @@ export class MailerService {
         email: string,
         template: MailerTemplate,
         name: string,
-        urlKey?: MailerURL,
-        endpoint?: MailerEndpoint,
-        token?: string,
-        emailToSign?: string,
-        sig?: string,
-        message?: EmailMessage,
-        userAgent?: string
+        options?: {
+            urlKey?: MailerURL,
+            endpoint?: MailerEndpoint,
+            token?: string,
+            emailToSign?: string,
+            sig?: string,
+            message?: EmailMessage,
+            userAgent?: string
+        }
     ) {
         let url: string | undefined;
         
-        if (urlKey && endpoint && token) {
-            const baseUrl = getEnvCors(urlKey);
+        if (options?.urlKey && options?.endpoint && options?.token) {
+            const baseUrl = getEnvCors(options?.urlKey);
 
-            if (emailToSign) {
-                url = `${baseUrl}/${endpoint}?token=${token}&email=${emailToSign}&sig=${sig}`;
+            if (options?.emailToSign) {
+                url = `${baseUrl}/${options?.endpoint}?token=${options?.token}&email=${options?.emailToSign}&sig=${options?.sig}`;
             } else {
-                url = `${baseUrl}/${endpoint}?token=${token}`;
+                url = `${baseUrl}/${options?.endpoint}?token=${options?.token}`;
             }
         }
 
         return {
             template,
             email,
-            context: { name, url, message, userAgent }
+            context: { name, url, message: options?.message, userAgent: options?.userAgent }
         }
     }
 
