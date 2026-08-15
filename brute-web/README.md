@@ -2,7 +2,7 @@
 	<a target="blank"><img src=".github/assets/BRUTE - Logo.png" width="500" alt="BRUTE Logo" /></a>
 </p>
 
-# Frontend
+# BRUTE — Frontend
 
 BRUTE is an authentication and authorization system designed around identity, profile, and credential separation to minimize attack surface and protect against account takeover vectors.
 
