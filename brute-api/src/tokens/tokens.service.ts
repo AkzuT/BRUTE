@@ -4,21 +4,17 @@ import { randomBytes, createHash } from "crypto";
 
 import { Token } from "./entities/token-entity";
 import { TokenType } from "./token-type.enum";
-import { FIXED_TOKEN_DURATIONS_MS, REFRESH_DURATION_MS, MFA_RESET_DEFAULT_DURATION_MS } from "./token-duration";
+import { FIXED_TOKEN_DURATIONS_MS, REFRESH_DURATION_MS } from "./token-duration";
 
 @Injectable()
 export class TokenService {
-    private resolveExpiresAt(type: TokenType, rememberMe: boolean | undefined, inheritedExpiresAt: Date | undefined): Date {
+    private resolveExpiresAt(type: TokenType, rememberMe: boolean | undefined): Date {
         const now = Date.now();
 
         if (type === TokenType.REFRESH) {
             const durationMS = rememberMe ? REFRESH_DURATION_MS.REMEMBER_ME : REFRESH_DURATION_MS.DEFAULT;
             
             return new Date(now + durationMS);
-        }
-
-        if (type === TokenType.MFA_RESET) {
-            return inheritedExpiresAt ?? new Date(now + MFA_RESET_DEFAULT_DURATION_MS);
         }
 
         const fixedDuration = FIXED_TOKEN_DURATIONS_MS[type]!;
@@ -48,12 +44,13 @@ export class TokenService {
     async generateToken(
         credId: number,
         type: TokenType,
+        userAgent: string,
         manager: EntityManager,
-        options?: {userAgent?: string; rememberMe?: boolean; inheritedExpiresAt?: Date },
-    ): Promise<{ plainToken: string; tokenId: number }> {
+        options?: {rememberMe?: boolean; },
+    ): Promise<{ tokenId: number; plainToken: string }> {
         const repo = manager.getRepository(Token);
         
-        const expiresAt = this.resolveExpiresAt(type, options?.rememberMe, options?.inheritedExpiresAt);
+        const expiresAt = this.resolveExpiresAt(type, options?.rememberMe);
 
         const { plainToken, tokenHash } = await this.generateUniqueTokenHash(manager);
 
@@ -62,12 +59,37 @@ export class TokenService {
             tokenType: type,
             tokenHash: tokenHash,
             expiresAt: expiresAt,
-            userAgent: options?.userAgent ?? "unknown",
+            userAgent,
         });
 
         const token = await repo.save(newToken);
 
-        return { plainToken, tokenId: token.tokenId };   
+        return { tokenId: token.tokenId, plainToken };   
+    }
+
+    async generateSessionAndRefreshTokens(
+        credId: number,
+        userAgent: string,
+        manager: EntityManager,
+        options: { userAgent: string; rememberMe?: boolean },
+    ): Promise <{ sessionToken: string; refreshToken: string }> {
+        const { plainToken: refreshToken } = await this.generateToken(
+            credId,
+            TokenType.REFRESH,
+            userAgent,
+            manager,
+            { rememberMe: options.rememberMe },
+        );
+
+        const { plainToken: sessionToken } = await this.generateToken(
+            credId,
+            TokenType.SESSION,
+            userAgent,
+            manager,
+            { rememberMe: options.rememberMe },
+        );
+
+        return { sessionToken, refreshToken };
     }
 
     async validateToken(plainToken: string, type: TokenType, manager: EntityManager): Promise<Token> {
