@@ -8,16 +8,16 @@ import { FIXED_TOKEN_DURATIONS_MS, REFRESH_DURATION_MS } from "./token-duration"
 
 @Injectable()
 export class TokenService {
-    private resolveExpiresAt(type: TokenType, rememberMe: boolean | undefined): Date {
+    private resolveExpiresAt(tokenType: TokenType, rememberMe: boolean | undefined): Date {
         const now = Date.now();
 
-        if (type === TokenType.REFRESH) {
+        if (tokenType === TokenType.REFRESH) {
             const durationMS = rememberMe ? REFRESH_DURATION_MS.REMEMBER_ME : REFRESH_DURATION_MS.DEFAULT;
             
             return new Date(now + durationMS);
         }
 
-        const fixedDuration = FIXED_TOKEN_DURATIONS_MS[type]!;
+        const fixedDuration = FIXED_TOKEN_DURATIONS_MS[tokenType]!;
         
         return new Date(now + fixedDuration);
     }
@@ -43,23 +43,23 @@ export class TokenService {
 
     async generateToken(
         credId: number,
-        type: TokenType,
+        tokenType: TokenType,
         userAgent: string,
         manager: EntityManager,
         options?: {rememberMe?: boolean; },
     ): Promise<{ tokenId: number; plainToken: string }> {
         const repo = manager.getRepository(Token);
         
-        const expiresAt = this.resolveExpiresAt(type, options?.rememberMe);
+        const expiresAt = this.resolveExpiresAt(tokenType, options?.rememberMe);
 
         const { plainToken, tokenHash } = await this.generateUniqueTokenHash(manager);
 
         const newToken = repo.create({
             credential: { credId: credId },
-            tokenType: type,
+            tokenType: tokenType,
             tokenHash: tokenHash,
             expiresAt: expiresAt,
-            userAgent,
+            userAgent: userAgent,
         });
 
         const token = await repo.save(newToken);
@@ -67,12 +67,12 @@ export class TokenService {
         return { tokenId: token.tokenId, plainToken };   
     }
 
-    async generateSessionAndRefreshTokens(
+    async generateSessionTokens(
         credId: number,
         userAgent: string,
         manager: EntityManager,
-        options: { userAgent: string; rememberMe?: boolean },
-    ): Promise <{ sessionToken: string; refreshToken: string }> {
+        options: { rememberMe?: boolean },
+    ): Promise <{ refreshToken: string; sessionToken: string; }> {
         const { plainToken: refreshToken } = await this.generateToken(
             credId,
             TokenType.REFRESH,
@@ -86,21 +86,20 @@ export class TokenService {
             TokenType.SESSION,
             userAgent,
             manager,
-            { rememberMe: options.rememberMe },
         );
 
-        return { sessionToken, refreshToken };
+        return { refreshToken, sessionToken };
     }
 
-    async validateToken(plainToken: string, type: TokenType, manager: EntityManager): Promise<Token> {
+    async validateToken(tokenType: TokenType, plainToken: string, manager: EntityManager): Promise<Token> {
         const repo = manager.getRepository(Token);
 
         const tokenHash = createHash("sha256").update(plainToken).digest("hex");
 
         const tokenReference = await repo.findOne({ 
             where: {
-                tokenHash: tokenHash,
-                tokenType: type
+                tokenType: tokenType,
+                tokenHash: tokenHash
             },
             relations: ["credential", "credential.profile"],
          });
@@ -128,7 +127,7 @@ export class TokenService {
         });
     }
 
-    async revokeAllForCredential(credId: number, manager: EntityManager): Promise<void> {
+    async revokeAllForCredentials(credId: number, manager: EntityManager): Promise<void> {
         const repo = manager.getRepository(Token);
 
         await repo.update(
@@ -141,13 +140,13 @@ export class TokenService {
         );
     }
     
-    async revokeAllForCredentialByType(credId: number, type: TokenType, manager: EntityManager): Promise<void> {
+    async revokeAllForCredentialsByType(credId: number, tokenType: TokenType, manager: EntityManager): Promise<void> {
         const repo = manager.getRepository(Token);
 
         await repo.update(
             {
                 credential: { credId: credId },
-                tokenType: type
+                tokenType: tokenType
             },
             {
                 revoked: true
