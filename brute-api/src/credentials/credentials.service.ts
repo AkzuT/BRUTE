@@ -6,12 +6,17 @@ import * as crypto from "crypto";
 import * as bcrypt from "bcryptjs";
 import * as otplib from "otplib";
 
+import { TokenService } from "src/tokens/tokens.service";
+import { MailerService } from "src/mailer/mailer.service";
+
 import { CredentialStatus } from "./credential-status.enum";
+import { TokenType } from "src/tokens/token-type.enum";
+import { MailerTemplate, MailerURL, MailerEndpoint, MailerSubject, EmailMessage } from "src/mailer/mailer.enums";
 
 import { Credential } from "./entities/credentials-entity";
 import { UserProfile } from "src/users/entities/user-profile-entity";
 
-import { MFAEnrollmentDTO, CredAuthDTO, MFAuthDTO, ResetPasswordDTO, ChangePasswordDTO } from "./dtos/credentials-dtos";
+import { MFAEnrollmentDTO, CredAuthDTO, MFAuthDTO, ResetPasswordDTO, ChangePasswordDTO, ReactivationDTO } from "./dtos/credentials-dtos";
 
 @Injectable()
 export class CredentialsService {
@@ -19,6 +24,9 @@ export class CredentialsService {
     private readonly algorithm = "aes-256-cbc";
 
     constructor(
+        private readonly tokenService: TokenService,
+        private readonly mailerService: MailerService,
+        
         private readonly dataSource: DataSource,
 
         private readonly configService: ConfigService
@@ -32,7 +40,7 @@ export class CredentialsService {
         this.encryptKey = key;
     }
 
-    encryp(text: string): Buffer {
+    encrypt(text: string): Buffer {
         const iv = crypto.randomBytes(16);
 
         const cipher = crypto.createCipheriv(this.algorithm, Buffer.from(this.encryptKey, "hex"), iv);
@@ -85,9 +93,16 @@ export class CredentialsService {
             // status:
         });
 
-        await repo.save(newCredential);
+        const credential = await repo.save(newCredential);
 
-        // Incluir lógica referente a la creación de tokens → "ACTIVATION".
+        const activationToken = await this.tokenService.generateToken(
+            credential.credId,
+            TokenType.ACTIVATION,
+            "SYSTEM_ACTIVATION_FLOW",
+            manager
+        );
+
+        return activationToken;
     }
 
     private async generateMFAData(profile: UserProfile, credential: Credential, manager: EntityManager) {
@@ -101,7 +116,7 @@ export class CredentialsService {
             secret: key
         });
 
-        const encryptedKey = this.encryp(key);
+        const encryptedKey = this.encrypt(key);
 
         await repo.update(credential.credId, {
             encryptedMfaSecret: encryptedKey,
@@ -112,6 +127,10 @@ export class CredentialsService {
             key,
             otpAuthUrl
         };
+    }
+
+    async hashPassword(password: string) {
+        return await bcrypt.hash(password, 10);
     }
 
     async activateCredentials(profile: UserProfile, credential: Credential, hashedPassword: string, manager: EntityManager) {
@@ -131,7 +150,7 @@ export class CredentialsService {
         };
     }
 
-    async mfaEnrollment(dto: MFAEnrollmentDTO, credential: Credential, manager: EntityManager) {
+    async mfaEnrollment(dto: MFAEnrollmentDTO, credential: Credential, tokenId: number, manager: EntityManager) {
         try {
             const repo = manager.getRepository(Credential);
 
@@ -147,7 +166,7 @@ export class CredentialsService {
                     status: CredentialStatus.ACTIVATED
                 });
 
-                // Incluir lógica referente a la revocación de tokens → "ACTIVATION".
+                await this.tokenService.revokeToken(tokenId, manager);
             } else {
                 throw new BadRequestException("Credentials-Service | MFAE-02: Invalid OTP.");
             }
@@ -300,7 +319,14 @@ export class CredentialsService {
 
                 await this.validateCredentials(credReference, dto.password, manager);
 
-                // Implementar lógica referente a la generación de tokens → "PRE_AUTH".
+                const preAuthToken = await this.tokenService.generateToken(
+                    credReference.credId,
+                    TokenType.PRE_AUTH,
+                    dto.userAgent,
+                    manager
+                );
+
+                return preAuthToken;
             });
         } catch (error) {
             console.error("Credentials-Service | Error: ", error);
@@ -308,15 +334,48 @@ export class CredentialsService {
         }
     }
 
-    async mfaAuthentication(dto: MFAuthDTO, credential: Credential) {
+    async mfaAuthentication(dto: MFAuthDTO, tokenId: number, credential: Credential, email: string, name: string) {
         try {
             return await this.dataSource.transaction(async (manager) => {
                 await this.validateMFA(credential, dto.otp, manager);
 
-                // Implementar lógica referente a la revocación de tokens → "PRE_AUTH".
-                // Implementar lógica referente a la identificación de inicio de sesión desde un nuevo dispositivo.
-                // Implementar lógica referente a la generación de tokens → "REFRESH" - "SESSION".
-                
+                await this.tokenService.revokeToken(tokenId, manager);
+
+                const sessionTokens = await this.tokenService.generateSessionTokens(
+                    credential.credId,
+                    dto.userAgent,
+                    manager,
+                    {
+                        rememberMe: dto.rememberMe
+                    }
+                );
+
+                const hasLoggedIn = await this.tokenService.hasLoggedInFromDevice(credential.credId, dto.userAgent, manager);
+
+                if (!hasLoggedIn) {
+                    const fraudFlagToken = await this.tokenService.generateToken(
+                        credential.credId,
+                        TokenType.FRAUD_FLAG,
+                        "POSSIBLE_FRAUD_HANDLING_FLOW",
+                        manager
+                    );
+
+                    const emailStructure = this.mailerService.buildEmail(
+                        email,
+                        MailerTemplate.NOTIFY_NEW_DEVICE,
+                        name,
+                        {
+                            urlKey: MailerURL.PUBLIC_WEB_URL,
+                            endpoint: MailerEndpoint.FRAUD_FLAG,
+                            token: fraudFlagToken.plainToken,
+                            userAgent: dto.userAgent
+                        }
+                    );
+
+                    await this.mailerService.sendEmail(MailerSubject.NOTIFY_NEW_DEVICE, emailStructure);
+                }
+
+                return sessionTokens;
             });
         } catch (error) {
             console.error("Credentials-Service | Error: ", error);
@@ -324,37 +383,43 @@ export class CredentialsService {
         }
     }
 
-    async resetPassword(dto: ResetPasswordDTO) {
+    private async updatePasswordHash(credId: number, newPasswordHash: string, manager: EntityManager) {
+        const repo = manager.getRepository(Credential);
+
+        await repo.update(credId, {
+            passwordHash: newPasswordHash
+        });
+    }
+
+    async resetPassword(dto: ResetPasswordDTO, tokenId: number, credId: number, email: string, name: string) {
         try {
-            const credential = await this.dataSource.transaction(async (manager) => {
-                const repo = manager.getRepository(Credential);
-
-                const credReference = await repo.findOne({
-                    where: {
-                        identifier: dto.mfaData.identifier,
-                    }
-                });
-
-                if (!credReference) {
-                    throw new InternalServerErrorException("Credentials-Service | RP-01: This information is not associated to an eligible account.");
-                }
-
-                await this.validateMFA(credReference, dto.mfaData.otp, manager);
-
-                return credReference;
-            });
-
-            const newPasswordHash = await bcrypt.hash(dto.newPassword, 10);
+            const newPasswordHash = await this.hashPassword(dto.newPassword);
 
             return await this.dataSource.transaction(async (manager) => {
-                const repo = manager.getRepository(Credential);
+                await this.updatePasswordHash(credId, newPasswordHash, manager);
 
-                await repo.update(credential.credId, {
-                    passwordHash: newPasswordHash
-                });
+                await this.tokenService.revokeToken(tokenId, manager);
 
-                // Implementar lógica referente a la generación de tokens → "FRAUD_FLAG".
-                // Implementar lógica referente a la notificación de usuarios via correo → Reinicio de contraseña exitoso.
+                const fraudFlagToken = await this.tokenService.generateToken(
+                    credId,
+                    TokenType.FRAUD_FLAG,
+                    "POSSIBLE_FRAUD_HANDLING_FLOW",
+                    manager
+                );
+
+                const emailStructure = this.mailerService.buildEmail(
+                    email,
+                    MailerTemplate.NOTIFY_EVENT,
+                    name,
+                    {
+                        message: EmailMessage.NOTIFY_PASSWORD_RESET,
+                        urlKey: MailerURL.PUBLIC_WEB_URL,
+                        endpoint: MailerEndpoint.FRAUD_FLAG,
+                        token: fraudFlagToken.plainToken
+                    }
+                );
+                
+                await this.mailerService.sendEmail(MailerSubject.NOTIFY_PASSWORD_RESET, emailStructure);
             })
         } catch (error) {
             console.error("Credentials-Service | Error: ", error);
@@ -362,39 +427,35 @@ export class CredentialsService {
         }
     }
 
-    async changePassword(dto: ChangePasswordDTO) {
+    async changePassword(dto: ChangePasswordDTO, tokenId: number, credId: number, email: string, name: string) {
         try {
-            const credential = await this.dataSource.transaction(async (manager) => {
-                const repo = manager.getRepository(Credential);
-
-                const credReference = await repo.findOne({
-                    where: {
-                        identifier: dto.credentials.identifier
-                    }
-                });
-
-                if (!credReference) {
-                    throw new InternalServerErrorException("Credentials-Service | CP-01: This information is not associated to an eligible account.");
-                }
-
-                await this.validateCredentials(credReference, dto.credentials.password, manager);
-
-                await this.validateMFA(credReference, dto.mfaData.otp, manager);
-
-                return credReference;
-            });
-
-            const newPasswordHash = await bcrypt.hash(dto.newPassword, 10);
+            const newPasswordHash = await this.hashPassword(dto.newPassword);
 
             return await this.dataSource.transaction(async (manager) => {
-                const repo = manager.getRepository(Credential);
+                await this.updatePasswordHash(credId, newPasswordHash, manager);
 
-                await repo.update(credential.credId, {
-                    passwordHash: newPasswordHash
-                });
+                await this.tokenService.revokeToken(tokenId, manager);
 
-                // Implementar lógica referente a la generación de tokens → "FRAUD_FLAG".
-                // Implementar lógica referente a la notificación de usuarios via correo → Cambio de contraseña exitoso.
+                const fraudFlagToken = await this.tokenService.generateToken(
+                    credId,
+                    TokenType.FRAUD_FLAG,
+                    "POSSIBLE_FRAUD_HANDLING_FLOW",
+                    manager
+                );
+
+                const emailStructure = this.mailerService.buildEmail(
+                    email,
+                    MailerTemplate.NOTIFY_EVENT,
+                    name,
+                    {
+                        message: EmailMessage.NOTIFY_PASSWORD_CHANGE,
+                        urlKey: MailerURL.PUBLIC_WEB_URL,
+                        endpoint: MailerEndpoint.FRAUD_FLAG,
+                        token: fraudFlagToken.plainToken
+                    }
+                );
+                
+                await this.mailerService.sendEmail(MailerSubject.NOTIFY_PASSWORD_CHANGE, emailStructure);
             });
         } catch (error) {
             console.error("Credentials-Service | Error: ", error);
@@ -430,12 +491,12 @@ export class CredentialsService {
         }
     }
 
-    async handleCompromisedCredentials(credential: Credential) {
+    async handleCompromisedCredentials(credId: number, email: string, name: string) {
         try {
             return await this.dataSource.transaction(async (manager) => {
                 const repo = manager.getRepository(Credential);
 
-                await repo.update(credential.credId, {
+                await repo.update(credId, {
                     passwordHash: null,
                     mfaEnrolled: false,
                     encryptedMfaSecret: null,
@@ -443,8 +504,15 @@ export class CredentialsService {
                     status: CredentialStatus.COMPROMISED,
                 });
 
-                // Implementar lógica referente a la revocatión de tokens → TODAS.
-                // Implementar lógica referente a la notificación de usuarios via correo → Cuenta bloqueada para evitar uso fraudulento.
+                await this.tokenService.revokeAllForCredential(credId, manager);
+                
+                const emailStructure = this.mailerService.buildEmail(
+                    email,
+                    MailerTemplate.NOTIFY_FRAUD,
+                    name,
+                );
+
+                await this.mailerService.sendEmail(MailerSubject.NOTIFY_FRAUD, emailStructure);
             });
         } catch (error) {
             console.error("Credentials-Service | Error: ", error);
@@ -452,7 +520,7 @@ export class CredentialsService {
         }
     }
 
-    async reactivateCredentials(identifier: string) {
+    async startCredReactivation(identifier: string) {
         try {
             return await this.dataSource.transaction(async (manager) => {
                 const repo = manager.getRepository(Credential);
@@ -478,8 +546,49 @@ export class CredentialsService {
                     status: CredentialStatus.REACTIVATING
                 });
 
-                // Implementar lógica referente a la generación de tokens → "REACTIVATION".
-                // Implementar lógica referente a la notificación de usuarios via correo → Correo de seguimiento para reactivación de cuenta.
+                const reactivationToken = await this.tokenService.generateToken(
+                    credReference.credId,
+                    TokenType.REACTIVATION,
+                    "SYSTEM_REACTIVATION_FLOW",
+                    manager
+                );
+
+                const emailStructure = this.mailerService.buildEmail(
+                    credReference.profile.email,
+                    MailerTemplate.REACTIVATION,
+                    credReference.profile.name,
+                    {
+                        urlKey: MailerURL.PUBLIC_WEB_URL,
+                        endpoint: MailerEndpoint.REACTIVATION,
+                        token: reactivationToken.plainToken
+                    }
+                );
+                
+                await this.mailerService.sendEmail(MailerSubject.REACTIVATION, emailStructure);
+            });
+        } catch (error) {
+            console.error("Credentials-Service | Error: ", error);
+            throw error;
+        }
+    }
+
+    async reactivateCredentials(dto: ReactivationDTO, tokenId: number, credId: number) {        
+        try {
+            const newPasswordHash = await this.hashPassword(dto.newPassword);
+
+            return await this.dataSource.transaction(async (manager) => {
+                await this.updatePasswordHash(credId, newPasswordHash, manager);
+
+                await this.tokenService.revokeToken(tokenId, manager);
+
+                const mfaResetToken = await this.tokenService.generateToken(
+                    credId,
+                    TokenType.MFA_RESET,
+                    "SYSTEM_R_MFA_RESET_FLOW",
+                    manager
+                );
+
+                return mfaResetToken;
             });
         } catch (error) {
             console.error("Credentials-Service | Error: ", error);

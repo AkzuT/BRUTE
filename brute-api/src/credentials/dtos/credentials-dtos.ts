@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MinLength, MaxLength, IsNumberString, Length  } from "class-validator";
+import { IsNotEmpty, IsString, MinLength, MaxLength, IsNumberString, Length, IsBoolean  } from "class-validator";
 import { ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 
@@ -37,6 +37,11 @@ class CredAuthDTO {
     @MinLength(12)
     @MaxLength(20)
     password: string = "";
+
+    @IsNotEmpty()
+    @IsString()
+    @MaxLength(255)
+    userAgent: string = "";
 }
 
 class MFAuthDTO {
@@ -49,6 +54,10 @@ class MFAuthDTO {
     @IsNumberString()
     @Length(6, 6)
     otp: string = "";
+
+    @IsNotEmpty()
+    @IsBoolean()
+    rememberMe: boolean = false;
 
     @IsNotEmpty()
     @IsString()
@@ -84,11 +93,20 @@ class ChangePasswordDTO {
     newPassword: string = "";
 }
 
+class ReactivationDTO {
+    @IsNotEmpty()
+    @IsString()
+    @MinLength(12)
+    @MaxLength(20)
+    newPassword: string = "";
+}
+
 export {
     PrivilegedActivationDTO,
     MFAEnrollmentDTO,
     CredAuthDTO,
     MFAuthDTO,
     ResetPasswordDTO,
-    ChangePasswordDTO
+    ChangePasswordDTO,
+    ReactivationDTO
 }

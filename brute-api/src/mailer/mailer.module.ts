@@ -47,6 +47,8 @@ import { MailerController } from "./mailer.controller";
     })
   ],
   providers: [MailerService],
-  controllers: [MailerController]
+  controllers: [MailerController],
+
+  exports: [MailerService]
 })
 export class MailerModule {}

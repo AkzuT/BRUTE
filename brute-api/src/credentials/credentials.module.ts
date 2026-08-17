@@ -3,6 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 
 import { UserModule } from "src/users/user.module";
 import { TokensModule } from "src/tokens/tokens.module";
+import { MailerModule } from "src/mailer/mailer.module";
 
 import { Credential } from "./entities/credentials-entity";
 
@@ -13,6 +14,7 @@ import { CredentialsController } from "./credentials.controller";
   imports: [
     UserModule,
     TokensModule,
+    MailerModule,
 
     TypeOrmModule.forFeature([
       Credential,
