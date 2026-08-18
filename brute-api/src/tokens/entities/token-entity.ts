@@ -8,7 +8,7 @@ export class Token {
     name: "token_id",
     type: "int"
   })
-  tokenId: number = 0;
+  tokenId!: number;
 
   @ManyToOne(() => Credential, (credential) => credential.tokens, { onDelete: "NO ACTION" })
   @JoinColumn({ name: "cred_id" })
@@ -17,7 +17,9 @@ export class Token {
   @Column({
     name: "token_type",
     type: "varchar",
-    length: 15
+    length: 15,
+
+    nullable: false
   })
   tokenType!: TokenType;
 
@@ -25,33 +27,41 @@ export class Token {
     name: "token_hash",
     type: "varchar",
     length: 255,
-    unique: true
+    unique: true,
+
+    nullable: false
   })
-  tokenHash: string = "";
+  tokenHash!: string;
 
   @CreateDateColumn({
     name: "created_at",
     type: "datetime2"
   })
-  createdAt: Date = new Date;
+  createdAt!: Date;
 
   @Column({
     name: "expires_at",
-    type: "datetime2"
+    type: "datetime2",
+
+    nullable: false
   })
-  expiresAt: Date = new Date;
+  expiresAt!: Date;
 
   @Column({
     name: "revoked",
     type: "bit",
-    default: false
+    default: false,
+
+    nullable: false,
   })
-  revoked: boolean = false;
+  revoked!: boolean;
 
   @Column({
     name: "user_agent",
     type: "nvarchar",
-    length: 500,
+    length: 255,
+
+    nullable: false
   })
-  userAgent: string = "";
+  userAgent!: string;
 }

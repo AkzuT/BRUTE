@@ -34,7 +34,7 @@ CREATE TABLE [dbo].[User_Profiles](
 	[profile_type] VARCHAR(12) NOT NULL,
 	[name] NVARCHAR(50) NOT NULL,
 	[first_last_name] NVARCHAR(50) NOT NULL,
-	[second_last_name] NVARCHAR(50) NOT NULL,
+	[second_last_name] NVARCHAR(50) NULL,
 	[profile_picture] NVARCHAR(255) NOT NULL,
 	[email] NVARCHAR(255) NOT NULL,
 	[phone] CHAR(8) NOT NULL,
@@ -72,7 +72,7 @@ CREATE TABLE [dbo].[Credentials](
 
 	CONSTRAINT FK_Credentials_UserProfiles FOREIGN KEY ([profile_id]) REFERENCES [dbo].[User_Profiles]([profile_id]),
 
-	CONSTRAINT UQ_Credentials_ProfileId_Identifier UNIQUE ([profile_id], [identifier]),
+	CONSTRAINT UQ_Credentials_ProfileId UNIQUE ([profile_id]),
 
 	CONSTRAINT CHK_Credentials_FailedAttempts CHECK ([status] >= 0),
 
