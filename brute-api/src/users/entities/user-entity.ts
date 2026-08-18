@@ -8,15 +8,17 @@ export class User {
   @PrimaryColumn({
     name: "user_id",
     type: "char",
-    length: 9
+    length: 9,
+
+    nullable: false
   })
-  userId: string = "";
+  userId!: string;
 
   @CreateDateColumn({
     name: "created_at",
-    type: "datetime2"
+    type: "datetime2",
   })
-  createdAt: Date = new Date;
+  createdAt!: Date;
 
   // ---
 
