@@ -69,15 +69,15 @@ export class CredentialsService {
     async createCredentials(profileId: number, identifier: string, manager: EntityManager) {
         const repo = manager.getRepository(Credential);
 
-        const credentialExists = await repo.exists({
+        const credReference = await repo.exists({
             where: {
-                profile: { profileId: profileId },
-                identifier: identifier
+                identifier: identifier,
+                status: Not(CredentialStatus.PENDING)
             }
         });
 
-        if (credentialExists) {
-            throw new ConflictException("Credentials-Service | CC-01: This information is already in use.");
+        if (credReference) {
+            throw new ConflictException("Credentials-Service | CC-01: This information is already in use");
         }
 
         const newCredential = repo.create({
@@ -150,26 +150,28 @@ export class CredentialsService {
         };
     }
 
-    async mfaEnrollment(dto: MFAEnrollmentDTO, credential: Credential, tokenId: number, manager: EntityManager) {
+    async mfaEnrollment(dto: MFAEnrollmentDTO, credential: Credential, tokenId: number) {
         try {
-            const repo = manager.getRepository(Credential);
+            return await this.dataSource.transaction(async (manager) => {
+                const repo = manager.getRepository(Credential);
 
-            if (!credential.encryptedMfaSecret) {
-                throw new InternalServerErrorException("Credentials-Service | MFAE-01: Invalid request.");
-            }
+                if (!credential.encryptedMfaSecret) {
+                    throw new InternalServerErrorException("Credentials-Service | MFAE-01: Invalid request.");
+                }
 
-            const decryptedKey = this.decrypt(credential.encryptedMfaSecret);
+                const decryptedKey = this.decrypt(credential.encryptedMfaSecret);
 
-            if ((await otplib.verify({token: dto.otp, secret: decryptedKey})).valid) {
-                await repo.update(credential.credId, {
-                    mfaEnrolled: true,
-                    status: CredentialStatus.ACTIVATED
-                });
+                if ((await otplib.verify({token: dto.otp, secret: decryptedKey})).valid) {
+                    await repo.update(credential.credId, {
+                        mfaEnrolled: true,
+                        status: CredentialStatus.ACTIVATED
+                    });
 
-                await this.tokenService.revokeToken(tokenId, manager);
-            } else {
-                throw new BadRequestException("Credentials-Service | MFAE-02: Invalid OTP.");
-            }
+                    await this.tokenService.revokeToken(tokenId, manager);
+                } else {
+                    throw new BadRequestException("Credentials-Service | MFAE-02: Invalid OTP.");
+                }
+            });
         } catch (error) {
             console.error("Credentials-Service | Error: ", error);
             throw error;
@@ -280,11 +282,11 @@ export class CredentialsService {
     }
 
     private async validateMFA(credential: Credential, otp: string, manager: EntityManager) {
+        this.validateCredentialsStatus(credential);
+        
         if (!credential.encryptedMfaSecret) {
             throw new InternalServerErrorException("Credentials-Service | VMFA-01: Invalid request.");
         }
-
-        this.validateCredentialsStatus(credential);
 
         const decryptedKey = this.decrypt(credential.encryptedMfaSecret);
 
@@ -464,40 +466,35 @@ export class CredentialsService {
     }
 
     async updateIdentifier(name: string, email: string, credId: number, manager: EntityManager) {
-        try {
-            const repo = manager.getRepository(Credential);
+        const repo = manager.getRepository(Credential);
 
-            await repo.update(credId, {
-                identifier: email,
-                mfaEnrolled: false,
-                encryptedMfaSecret: null,
-                mfaSecretIssuedAt: null,
-                status: CredentialStatus.REACTIVATING,
-            });
+        await repo.update(credId, {
+            identifier: email,
+            mfaEnrolled: false,
+            encryptedMfaSecret: null,
+            mfaSecretIssuedAt: null,
+            status: CredentialStatus.REACTIVATING,
+        });
 
-            const mfaReset = await this.tokenService.generateToken(
-                credId,
-                TokenType.MFA_RESET,
-                "EMAIL_CHANGE_FLOW",
-                manager
-            );
+        const mfaReset = await this.tokenService.generateToken( 
+            credId,
+            TokenType.MFA_RESET,
+            "EMAIL_CHANGE_FLOW",
+            manager
+        );
 
-            const emailStructure = this.mailerService.buildEmail(
-                email,
-                MailerTemplate.MFA_RESET,
-                name,
-                {
-                    urlKey: MailerURL.PUBLIC_WEB_URL,
-                    endpoint: MailerEndpoint.MFA_RESET,
-                    token: mfaReset.plainToken,
-                }
-            );
+        const emailStructure = this.mailerService.buildEmail(
+            email,
+            MailerTemplate.MFA_RESET,
+            name,
+            {
+                urlKey: MailerURL.PUBLIC_WEB_URL,
+                endpoint: MailerEndpoint.MFA_RESET,
+                token: mfaReset.plainToken,
+            }
+        );
 
-            await this.mailerService.sendEmail(MailerSubject.NOTIFY_EMAIL_CHANGE, emailStructure);
-        } catch (error) {
-            console.error("Credentials-Service | Error: ", error);
-            throw error;
-        }
+        await this.mailerService.sendEmail(MailerSubject.NOTIFY_EMAIL_CHANGE, emailStructure);
     }
 
     async unlockCredentials(identifier: string) {
