@@ -7,9 +7,11 @@ export class UserPhone {
   @PrimaryColumn({
     name: "phone",
     type: "char",
-    length: 8
+    length: 8,
+
+    nullable: false,
   })
-  phone: string = "";
+  phone!: string;
 
   @ManyToOne(() => User, (user) => user.phones, { onDelete: "NO ACTION" })
   @JoinColumn({ name: "user_id" })

@@ -9,9 +9,9 @@ import { Credential } from "src/credentials/entities/credentials-entity";
 export class UserProfile {
   @PrimaryGeneratedColumn({
     name: "profile_id",
-    type: "int"
+    type: "int",
   })
-  profileId: number = 0;
+  profileId!: number;
 
   @ManyToOne(() => User, (user) => user.profiles, { onDelete: "NO ACTION"})
   @JoinColumn({ name: "user_id" })
@@ -20,53 +20,67 @@ export class UserProfile {
   @Column({
     name: "profile_type",
     type: "varchar",
-    length: 12
+    length: 12,
+
+    nullable: false
   })
   profileType!: ProfileType;
 
   @Column({
     name: "name",
     type: "nvarchar",
-    length: 50
+    length: 50,
+
+    nullable: false
   })
-  name: string = "";
+  name!: string;
 
   @Column({
     name: "first_last_name",
     type: "nvarchar",
-    length: 50
+    length: 50,
+
+    nullable: false
   })
-  firstLastName: string = "";
+  firstLastName!: string;
 
   @Column({
     name: "second_last_name",
     type: "nvarchar",
     length: 50,
+
     nullable: true
   })
-  secondLastName: string | null = null;
+  secondLastName!: string | null;
 
   @Column({
     name: "profile_picture",
     type: "nvarchar",
     length: 255,
-    default: "default-profile-picture.png"
+
+    default: "default-profile-picture.png",
+
+    nullable: false
   })
-  profilePicture: string = "";
+  profilePicture!: string;
 
   @Column({
     name: "email",
     type: "nvarchar",
-    length: 255
+    length: 255,
+
+    nullable: false
   })
-  email: string = "";
+  email!: string;
 
   @Column({
     name: "phone",
     type: "char",
-    length: 8
+    length: 8,
+
+    nullable: false
   })
-  phone: string  = "";
+  phone!: string;
 
   // ---
 

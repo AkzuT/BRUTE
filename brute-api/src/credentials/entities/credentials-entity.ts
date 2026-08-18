@@ -12,7 +12,7 @@ export class Credential {
     name: "cred_id",
     type: "int"
   })
-  credId: number = 0;
+  credId!: number;
 
   @OneToOne(() => UserProfile, (profile) => profile.credential, { onDelete: "NO ACTION" })
   @JoinColumn({ name: "profile_id" })
@@ -22,61 +22,73 @@ export class Credential {
     name: "identifier", 
     type: "nvarchar",
     length: 255,
-    unique: true
+
+    nullable: false
   })
-  identifier: string = "";
+  identifier!: string;
 
   @Column({
     name: "password_hash",
     type: "varchar",
     length: 255,
+
     nullable: true
   })
-  passwordHash: string | null = null;
+  passwordHash!: string | null;
 
   @Column({ 
     name: "mfa_enrolled", 
     type: "bit", 
-    default: false
+    default: false,
+
+    nullable: false,
   })
-  mfaEnrolled: boolean = false;
+  mfaEnrolled!: boolean;
 
   @Column({
     name: "encrypted_mfa_secret",
     type: "varbinary",
-    length: "MAX",
+    length: 512,
+
     nullable: true
   })
-  encryptedMfaSecret: Buffer | null = null;
+  encryptedMfaSecret!: Buffer | null;
 
   @Column({ 
     name: "mfa_secret_issued_at", 
     type: "datetime2", 
+
     nullable: true
   })
-  mfaSecretIssuedAt: Date | null = null;
+  mfaSecretIssuedAt!: Date | null;
 
   @Column({
     name: "failed_attempts", 
     type: "int", 
     default: 0,
+
+    nullable: false
   })
-  failedAttempts: number = 0;
+  failedAttempts!: number;
 
   @Column({
     name: "locked_until", 
     type: "datetime2", 
+
     nullable: true
   })
-  lockedUntil: Date | null = null;
+  lockedUntil!: Date | null;
 
   @Column({
     name: "status",
     type: "varchar",
     length: 12,
-    default: CredentialStatus.PENDING
+    
+    default: CredentialStatus.PENDING,
+
+    nullable: false
   })
-  status: CredentialStatus = CredentialStatus.PENDING;
+  status!: CredentialStatus;
 
   // ---
 
