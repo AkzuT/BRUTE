@@ -16,7 +16,7 @@ import { MailerTemplate, MailerURL, MailerEndpoint, MailerSubject, EmailMessage 
 import { Credential } from "./entities/credentials-entity";
 import { UserProfile } from "src/users/entities/user-profile-entity";
 
-import { MFAEnrollmentDTO, CredAuthDTO, MFAuthDTO, ResetPasswordDTO, ChangePasswordDTO, ReactivationDTO } from "./dtos/credentials-dtos";
+import { MFAEnrollmentDTO, CredAuthDTO, MFAAuthDTO, ResetPasswordDTO, ChangePasswordDTO, ReactivationDTO } from "./dtos/credentials-dtos";
 
 @Injectable()
 export class CredentialsService {
@@ -176,7 +176,7 @@ export class CredentialsService {
         }
     }
 
-    private async validateCredentialStatus(credential: Credential) {
+    private validateCredentialsStatus(credential: Credential) {
         switch(credential.status) {
             case CredentialStatus.PENDING:
                 throw new BadRequestException("Credentials-Service | VCS-01: Credentials pending of activation.");
@@ -264,7 +264,7 @@ export class CredentialsService {
     }
 
     private async validateCredentials(credential: Credential, password: string, manager: EntityManager) {
-        await this.validateCredentialStatus(credential);
+        this.validateCredentialsStatus(credential);
 
         const isValid = await bcrypt.compare(password, credential.passwordHash ?? "");
 
@@ -284,7 +284,7 @@ export class CredentialsService {
             throw new InternalServerErrorException("Credentials-Service | VMFA-01: Invalid request.");
         }
 
-        await this.validateCredentialStatus(credential);
+        this.validateCredentialsStatus(credential);
 
         const decryptedKey = this.decrypt(credential.encryptedMfaSecret);
 
@@ -334,7 +334,7 @@ export class CredentialsService {
         }
     }
 
-    async mfaAuthentication(dto: MFAuthDTO, tokenId: number, credential: Credential, email: string, name: string) {
+    async mfaAuthentication(dto: MFAAuthDTO, name: string, email: string, credential: Credential, tokenId: number) {
         try {
             return await this.dataSource.transaction(async (manager) => {
                 await this.validateMFA(credential, dto.otp, manager);
@@ -391,7 +391,7 @@ export class CredentialsService {
         });
     }
 
-    async resetPassword(dto: ResetPasswordDTO, tokenId: number, credId: number, email: string, name: string) {
+    async resetPassword(dto: ResetPasswordDTO, name: string, email: string, credId: number, tokenId: number) {
         try {
             const newPasswordHash = await this.hashPassword(dto.newPassword);
 
@@ -427,7 +427,7 @@ export class CredentialsService {
         }
     }
 
-    async changePassword(dto: ChangePasswordDTO, tokenId: number, credId: number, email: string, name: string) {
+    async changePassword(dto: ChangePasswordDTO, name: string, email: string, credId: number, tokenId: number) {
         try {
             const newPasswordHash = await this.hashPassword(dto.newPassword);
 
@@ -463,6 +463,43 @@ export class CredentialsService {
         }
     }
 
+    async updateIdentifier(name: string, email: string, credId: number, manager: EntityManager) {
+        try {
+            const repo = manager.getRepository(Credential);
+
+            await repo.update(credId, {
+                identifier: email,
+                mfaEnrolled: false,
+                encryptedMfaSecret: null,
+                mfaSecretIssuedAt: null,
+                status: CredentialStatus.REACTIVATING,
+            });
+
+            const mfaReset = await this.tokenService.generateToken(
+                credId,
+                TokenType.MFA_RESET,
+                "EMAIL_CHANGE_FLOW",
+                manager
+            );
+
+            const emailStructure = this.mailerService.buildEmail(
+                email,
+                MailerTemplate.MFA_RESET,
+                name,
+                {
+                    urlKey: MailerURL.PUBLIC_WEB_URL,
+                    endpoint: MailerEndpoint.MFA_RESET,
+                    token: mfaReset.plainToken,
+                }
+            );
+
+            await this.mailerService.sendEmail(MailerSubject.NOTIFY_EMAIL_CHANGE, emailStructure);
+        } catch (error) {
+            console.error("Credentials-Service | Error: ", error);
+            throw error;
+        }
+    }
+
     async unlockCredentials(identifier: string) {
         try {
             return await this.dataSource.transaction(async (manager) => {
@@ -491,7 +528,7 @@ export class CredentialsService {
         }
     }
 
-    async handleCompromisedCredentials(credId: number, email: string, name: string) {
+    async handleCompromisedCredentials(name: string, email: string, credId: number) {
         try {
             return await this.dataSource.transaction(async (manager) => {
                 const repo = manager.getRepository(Credential);
@@ -504,7 +541,7 @@ export class CredentialsService {
                     status: CredentialStatus.COMPROMISED,
                 });
 
-                await this.tokenService.revokeAllForCredential(credId, manager);
+                await this.tokenService.revokeAllForCredentials(credId, manager);
                 
                 const emailStructure = this.mailerService.buildEmail(
                     email,
@@ -572,7 +609,7 @@ export class CredentialsService {
         }
     }
 
-    async reactivateCredentials(dto: ReactivationDTO, tokenId: number, credId: number) {        
+    async reactivateCredentials(dto: ReactivationDTO, credId: number, tokenId: number) {        
         try {
             const newPasswordHash = await this.hashPassword(dto.newPassword);
 

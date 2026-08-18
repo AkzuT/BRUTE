@@ -5,76 +5,62 @@ import { Type } from "class-transformer";
 class PrivilegedActivationDTO {
     @IsNotEmpty()
     @IsString()
-    token: string = "";
+    token!: string;
 
     @IsNotEmpty()
     @IsString()
     @MinLength(12)
     @MaxLength(20)
-    password: string = "";
+    password!: string;
 }
 
 class MFAEnrollmentDTO {
     @IsNotEmpty()
-    @IsString()
-    @MaxLength(255)
-    identifier: string = "";
-
-    @IsNotEmpty()
     @IsNumberString()
     @Length(6, 6)
-    otp: string = "";
+    otp!: string;
 }
 
 class CredAuthDTO {
     @IsNotEmpty()
     @IsString()
     @MaxLength(255)
-    identifier: string = "";
+    identifier!: string;
 
     @IsNotEmpty()
     @IsString()
     @MinLength(12)
     @MaxLength(20)
-    password: string = "";
+    password!: string;
 
     @IsNotEmpty()
     @IsString()
     @MaxLength(255)
-    userAgent: string = "";
+    userAgent!: string;
 }
 
-class MFAuthDTO {
-    @IsNotEmpty()
-    @IsString()
-    @MaxLength(255)
-    identifier: string = "";
-
+class MFAAuthDTO {
     @IsNotEmpty()
     @IsNumberString()
     @Length(6, 6)
-    otp: string = "";
+    otp!: string;
 
     @IsNotEmpty()
     @IsBoolean()
-    rememberMe: boolean = false;
+    rememberMe!: boolean;
 
     @IsNotEmpty()
     @IsString()
     @MaxLength(255)
-    userAgent: string = "";
+    userAgent!: string;
 }
 
 class ResetPasswordDTO {
-    @ValidateNested()
-    @Type(() => MFAuthDTO)
-    mfaData!: MFAuthDTO;
-
     @IsNotEmpty()
     @IsString()
     @MinLength(12)
     @MaxLength(20)
-    newPassword: string = "";
+    newPassword!: string;
 }
 
 class ChangePasswordDTO {
@@ -83,14 +69,14 @@ class ChangePasswordDTO {
     credentials!: CredAuthDTO;
 
     @ValidateNested()
-    @Type(() => MFAuthDTO)
-    mfaData!: MFAuthDTO;
+    @Type(() => MFAAuthDTO)
+    mfaData!: MFAAuthDTO;
 
     @IsNotEmpty()
     @IsString()
     @MinLength(12)
     @MaxLength(20)
-    newPassword: string = "";
+    newPassword!: string;
 }
 
 class ReactivationDTO {
@@ -98,14 +84,14 @@ class ReactivationDTO {
     @IsString()
     @MinLength(12)
     @MaxLength(20)
-    newPassword: string = "";
+    newPassword!: string;
 }
 
 export {
     PrivilegedActivationDTO,
     MFAEnrollmentDTO,
     CredAuthDTO,
-    MFAuthDTO,
+    MFAAuthDTO,
     ResetPasswordDTO,
     ChangePasswordDTO,
     ReactivationDTO
