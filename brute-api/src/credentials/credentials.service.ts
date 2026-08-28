@@ -105,20 +105,32 @@ export class CredentialsService {
         return activationToken;
     }
 
-    private async generateMFAData(profile: UserProfile, credential: Credential, manager: EntityManager) {
+    async hashPassword(password: string) {
+        return await bcrypt.hash(password, 10);
+    }
+
+    async activateCredentials(credId: number, hashedPassword: string, manager: EntityManager) {
+        const repo = manager.getRepository(Credential);
+
+        await repo.update(credId, {
+            passwordHash: hashedPassword,
+        });
+    }
+
+    private async generateMFAData(email: string, credId: number, manager: EntityManager) {
         const repo = manager.getRepository(Credential);
 
         const key = otplib.generateSecret();
         
         const otpAuthUrl = otplib.generateURI({
             issuer: "BRUTE",
-            label: profile.email,
+            label: email,
             secret: key
         });
 
         const encryptedKey = this.encrypt(key);
 
-        await repo.update(credential.credId, {
+        await repo.update(credId, {
             encryptedMfaSecret: encryptedKey,
             mfaSecretIssuedAt: new Date(),
         });
@@ -129,25 +141,15 @@ export class CredentialsService {
         };
     }
 
-    async hashPassword(password: string) {
-        return await bcrypt.hash(password, 10);
-    }
+    async initiateMFAEnrollment(email: string, credId: number) {
+        return await this.dataSource.transaction(async (manager) => {
+            const { key, otpAuthUrl } = await this.generateMFAData(email, credId, manager);
 
-    async activateCredentials(profile: UserProfile, credential: Credential, hashedPassword: string, manager: EntityManager) {
-        const repo = manager.getRepository(Credential);
-
-        const mfaData = await this.generateMFAData(profile, credential, manager);
-
-        const { key, otpAuthUrl } = mfaData;
-
-        await repo.update(credential.credId, {
-            passwordHash: hashedPassword,
+            return {
+                key,
+                otpAuthUrl
+            };
         });
-
-        return {
-            key,
-            otpAuthUrl
-        };
     }
 
     async mfaEnrollment(dto: MFAEnrollmentDTO, credential: Credential, tokenId: number) {
