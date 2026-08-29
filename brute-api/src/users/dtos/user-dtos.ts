@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, Length, MaxLength, IsOptional, IsEmail } from "class-validator";
+import { IsNotEmpty, IsString, Length, MinLength, MaxLength, IsOptional, IsEmail } from "class-validator";
 
 export class UserDTO {
     @IsNotEmpty()
@@ -34,11 +34,25 @@ export class UserProfileDTO {
     phone: string = "";
 }
 
-type RegUser = {
+class PasswordDTO {
+    @IsNotEmpty()
+    @IsString()
+    @MinLength(12)
+    @MaxLength(20)
+    password!: string;
+}
+
+type RegUserUnprivileged = {
+    user: UserDTO,
+    profile: UserProfileDTO
+    password: PasswordDTO
+}
+
+type RegUserPrivileged = {
     user: UserDTO,
     profile: UserProfileDTO
 }
 
 export type { 
-    RegUser,
+    RegUserUnprivileged, RegUserPrivileged
 }

@@ -83,26 +83,18 @@ export class CredentialsService {
         const newCredential = repo.create({
             profile: { profileId: profileId },
             identifier: identifier,
-            // passwordHash:
-            // mfaEnrolled:
-            // encryptedMfaSecret:
-            // mfaSecretIssuedAt:
-
-            // failedAttempts:
-            // lockedUntil:
-            // status:
         });
 
         const credential = await repo.save(newCredential);
 
-        const activationToken = await this.tokenService.generateToken(
+        const { plainToken, tokenId } = await this.tokenService.generateToken(
             credential.credId,
             TokenType.ACTIVATION,
             "SYSTEM_ACTIVATION_FLOW",
             manager
         );
 
-        return activationToken;
+        return { credId: credential.credId, plainToken, tokenId };
     }
 
     async hashPassword(password: string) {

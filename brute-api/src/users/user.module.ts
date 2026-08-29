@@ -12,6 +12,10 @@ import { UserProfile } from "./entities/user-profile-entity";
 import { UserService } from "./user.service";
 import { UserController } from "./user.controller";
 
+import { CredentialsModule } from "src/credentials/credentials.module";
+import { TokensModule } from "src/tokens/tokens.module";
+import { MailerModule } from "src/mailer/mailer.module";
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -19,6 +23,9 @@ import { UserController } from "./user.controller";
       UserPhone,
       UserProfile,
     ]),
+    CredentialsModule,
+    TokensModule,
+    MailerModule,
     MulterModule.register({
       storage: diskStorage({
         destination: "./profile-pictures",
