@@ -517,7 +517,7 @@ export class CredentialsService {
                 await this.tokenService.revokeSession(credId, userAgent, manager);
             });
         } catch (error) {
-            console.error("Credentials-Service | Error: ");
+            console.error("Credentials-Service | Error: ", error);
             throw error;
         }
     }
@@ -528,7 +528,7 @@ export class CredentialsService {
                 await this.tokenService.revokeSelectedSession(credId, userAgent, manager);
             });
         } catch (error) {
-            console.error("Credentials-Service | Error: ");
+            console.error("Credentials-Service | Error: ", error);
             throw error;
         }
     }
@@ -539,7 +539,7 @@ export class CredentialsService {
                 await this.tokenService.revokeAllForCredentials(credId, manager);
             });
         } catch (error) {
-            console.error("Credentials-Service | Error: ");
+            console.error("Credentials-Service | Error: ", error);
             throw error;
         }
     }
