@@ -21,7 +21,10 @@ import { MailerModule } from "./mailer/mailer.module";
 import { AppService } from "./app.service";
 import { AppController } from "./app.controller";
 
-import { CredentialsGuardModule } from "./credentials-guard/credentials-guard.module";
+import { AuthGuardModule } from "./authentication-guard/authentication-guard.module";
+import { RolesGuardModule } from './roles-guard/roles-guard.module';
+
+import { APP_GUARD } from "@nestjs/core";
 
 @Module({
   imports: [
@@ -36,7 +39,8 @@ import { CredentialsGuardModule } from "./credentials-guard/credentials-guard.mo
     ScheduleModule.forRoot(),
     MailerModule,
 
-    CredentialsGuardModule,
+    AuthGuardModule,
+    RolesGuardModule,
 
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
@@ -64,6 +68,16 @@ import { CredentialsGuardModule } from "./credentials-guard/credentials-guard.mo
   ],
 
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: AuthGuardModule
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuardModule
+    }
+  ],
 })
 export class AppModule {}
