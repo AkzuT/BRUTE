@@ -305,6 +305,18 @@ export class CredentialsService {
         }
     }
 
+    async reauthenticate(credential: Credential, password: string, otp: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                await this.validateCredentials(credential, password, manager);
+                await this.validateMFA(credential, otp, manager);
+            });
+        } catch (error) {
+            console.error("Credentials-Service | Error: ", error);
+            throw error;
+        }
+    }
+
     async credAuthentication(dto: CredAuthDTO) {
         try {
             return await this.dataSource.transaction(async (manager) => {
@@ -497,6 +509,39 @@ export class CredentialsService {
         );
 
         await this.mailerService.sendEmail(MailerSubject.NOTIFY_EMAIL_CHANGE, emailStructure);
+    }
+
+    async localLogOut(credId: number, userAgent: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                await this.tokenService.revokeSession(credId, userAgent, manager);
+            });
+        } catch (error) {
+            console.error("Credentials-Service | Error: ");
+            throw error;
+        }
+    }
+
+    async selectedLogOut(credId: number, userAgent: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                await this.tokenService.revokeSelectedSession(credId, userAgent, manager);
+            });
+        } catch (error) {
+            console.error("Credentials-Service | Error: ");
+            throw error;
+        }
+    }
+
+    async logOutAll(credId: number) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                await this.tokenService.revokeAllForCredentials(credId, manager);
+            });
+        } catch (error) {
+            console.error("Credentials-Service | Error: ");
+            throw error;
+        }
     }
 
     async unlockCredentials(identifier: string) {
