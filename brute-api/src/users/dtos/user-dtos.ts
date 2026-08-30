@@ -4,34 +4,34 @@ export class UserDTO {
     @IsNotEmpty()
     @IsString()
     @Length(9)
-    userId: string = "";
+    userId!: string;
 }
 
 export class UserProfileDTO {
     @IsNotEmpty()
     @IsString()
     @MaxLength(50)
-    name: string = "";
+    name!: string;
 
     @IsNotEmpty()
     @IsString()
     @MaxLength(50)
-    firstLastName: string = "";
+    firstLastName!: string;
 
     @IsOptional()
     @IsString()
     @MaxLength(50)
-    secondLastName: string = "";
+    secondLastName!: string;
 
     @IsNotEmpty()
     @IsEmail()
     @MaxLength(255)
-    email: string = "";
+    email!: string;
 
     @IsNotEmpty()
     @IsString()
     @Length(8)
-    phone: string = "";
+    phone!: string;
 }
 
 class PasswordDTO {
@@ -54,5 +54,6 @@ type RegUserPrivileged = {
 }
 
 export type { 
-    RegUserUnprivileged, RegUserPrivileged
+    RegUserUnprivileged,
+    RegUserPrivileged
 }

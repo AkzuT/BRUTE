@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, BadRequestException, NotFoundException, InternalServerErrorException, Inject } from "@nestjs/common";
+import { Injectable, ConflictException, BadRequestException, NotFoundException } from "@nestjs/common";
 
 import { DataSource, Repository, EntityManager } from "typeorm";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -11,13 +11,14 @@ import { UserPhone } from "./entities/user-phone-entity";
 import { UserProfile } from "./entities/user-profile-entity";
 
 import { RegUserUnprivileged, RegUserPrivileged } from "./dtos/user-dtos";
+
 import { ProfileType } from "./profile-type.enum";
+import { TokenType } from "src/tokens/token-type.enum";
+import { MailerTemplate, MailerURL, MailerEndpoint, MailerSubject } from "src/mailer/mailer.enums";
 
 import { CredentialsService } from "src/credentials/credentials.service";
-import { MailerService } from "src/mailer/mailer.service";
-import { MailerTemplate, MailerURL, MailerEndpoint, MailerSubject } from "src/mailer/mailer.enums";
-import { TokenType } from "src/tokens/token-type.enum";
 import { TokenService } from "src/tokens/tokens.service";
+import { MailerService } from "src/mailer/mailer.service";
 
 type RegUserBase = RegUserUnprivileged | RegUserPrivileged;
 
@@ -25,21 +26,15 @@ type RegUserBase = RegUserUnprivileged | RegUserPrivileged;
 export class UserService {
     constructor(
         private readonly dataSource: DataSource,
+
         private readonly credentialsService: CredentialsService,
+
         private readonly tokenService: TokenService,
+
         private readonly mailerService: MailerService,
-
-        @InjectRepository(User)
-        private readonly userRepo: Repository<User>,
-
-        @InjectRepository(UserProfile)
-        private readonly profileRepo: Repository<UserProfile>
     ) {}
 
-    private readonly ACTIVATION_MAILER: Record <
-        ProfileType,
-        { template: MailerTemplate; endpoint: MailerEndpoint; subject: MailerSubject }
-    > = {
+    private readonly ACTIVATION_MAILER: Record <ProfileType, { template: MailerTemplate; endpoint: MailerEndpoint; subject: MailerSubject }> = {
         [ProfileType.UNPRIVILEGED]: {
             template: MailerTemplate.UNPRIVILEGED_ACTIVATION,
             endpoint: MailerEndpoint.UNPRIVILEGED_ACTIVATION,
@@ -97,18 +92,14 @@ export class UserService {
 
         if (!phoneRegisteredToUser) {
             throw new ConflictException(
-                revealDetails
-                    ? "User-Service | VP-01: El TELÉFONO que quiere registrar ya está en uso."
-                    : "User-Service | VP-01: The information provided is already in use."
+                revealDetails ? "Users-Service | VP-01: The PHONE that wants to be registered is already in use." : "Users-Service | VP-01: The information provided is already in use."
             );
         }
     }
 
-    private async addProfile(dto: RegUserBase, type: ProfileType, file: Express.Multer.File | undefined, revealDetails: boolean, manager: EntityManager) {
+    private async addProfile(dto: RegUserBase, type: ProfileType, file: Express.Multer.File, revealDetails: boolean, manager: EntityManager) {
         if (type === "PRIVILEGED" && !file) {
-            throw new BadRequestException(
-                "User-Service | AP-01: El registro de PERFILES PRIVILEGIADOS requiere, obligatoriamente, una foto de perfil."
-            );
+            throw new BadRequestException("Users-Service | AP-01: The PROFILE PICTURE is mandatory for privileged profiles.");
         }
 
         const repo = manager.getRepository(UserProfile);
@@ -122,9 +113,7 @@ export class UserService {
 
         if (profileExists) {
             throw new ConflictException(
-                revealDetails
-                ? "User-Service | AP-02: An account already exists for this User ID and Profile Type."
-                : "User-Service | AP-02: An account with this information already exists. Please try again."
+                revealDetails ? "Users-Service | AP-02: The provided ID is already registered for a privileged profile" : "Users-Service | AP-02: The information provided is already in use."
             );
         }
 
@@ -147,70 +136,65 @@ export class UserService {
     private async registerUser(
         dto: RegUserBase,
         type: ProfileType,
-        file: Express.Multer.File | undefined,
+        file: Express.Multer.File,
         revealDetails: boolean,
-        manager: EntityManager,
+        manager: EntityManager
     ) {
         await this.addUser(dto.user.userId, manager);
         return this.addProfile(dto, type, file, revealDetails, manager);   
     }
 
-    private async sendActivationEmail(profile: UserProfile, type: ProfileType, activateToken: string) {
+    private async sendActivationEmail(profile: UserProfile, type: ProfileType, activationToken: string) {
         const { template, endpoint, subject } = this.ACTIVATION_MAILER[type];
 
-        const emailStructure = this.mailerService.buildEmail(profile.email, template, profile.name, {
-            urlKey: MailerURL.PUBLIC_WEB_URL,
-            endpoint,
-            token: activateToken,
-        });
+        const emailStructure = this.mailerService.buildEmail(
+            profile.email, 
+            template, profile.name,
+            {
+                urlKey: MailerURL.PUBLIC_WEB_URL,
+                endpoint: endpoint,
+                token: activationToken,
+            }
+        );
 
         await this.mailerService.sendEmail(subject, emailStructure);
     }
 
-    async registerUnprivilegedUser(dto: RegUserUnprivileged, file?: Express.Multer.File) {
+    async registerUnprivilegedUser(dto: RegUserUnprivileged, file: Express.Multer.File) {
         try {
-            return await this.dataSource.transaction(async(manager) => {
+            const hashedPassword = await this.credentialsService.hashPassword(dto.password.password);
+
+            return await this.dataSource.transaction(async (manager) => {
                 const profile = await this.registerUser(dto, ProfileType.UNPRIVILEGED, file, false, manager);
 
-                const { credId, plainToken: activationToken } = await this.credentialsService.createCredentials(
-                    profile.profileId,
-                    profile.email,
-                    manager,
-                );
+                const { credId, plainToken } = await this.credentialsService.createCredentials(profile.profileId, profile.email, manager);
 
-                const hashedPassword = await this.credentialsService.hashPassword(dto.password.password);
                 await this.credentialsService.activateCredentials(credId, hashedPassword, manager);
 
-                await this.sendActivationEmail(profile, ProfileType.UNPRIVILEGED, activationToken);
-
-                return profile;
+                await this.sendActivationEmail(profile, ProfileType.UNPRIVILEGED, plainToken);
             });
 
         } catch (error) {
             if (file) await fs.promises.unlink(file.path).catch(() => {});
-            console.error("User-Service | Error: ", error);
+
+            console.error("Users-Service | Error: ", error);
             throw error;
         }
     }
 
-    async registerPrivilegedUser(dto: RegUserPrivileged, file?: Express.Multer.File) {
+    async registerPrivilegedUser(dto: RegUserPrivileged, file: Express.Multer.File) {
         try {
-            return await this.dataSource.transaction(async(manager) => {
+            return await this.dataSource.transaction(async (manager) => {
                 const profile = await this.registerUser(dto, ProfileType.PRIVILEGED, file, true, manager);
 
-                const { plainToken: activationToken } = await this.credentialsService.createCredentials(
-                    profile.profileId,
-                    profile.email,
-                    manager,
-                );
+                const { plainToken } = await this.credentialsService.createCredentials(profile.profileId, profile.email, manager);
 
-                await this.sendActivationEmail(profile, ProfileType.PRIVILEGED, activationToken);
-
-                return profile;
-        });
+                await this.sendActivationEmail(profile, ProfileType.PRIVILEGED, plainToken);
+            });
         } catch (error) {
             if (file) await fs.promises.unlink(file.path).catch(() => {});
-            console.error("User-Service | Error: ", error);
+
+            console.error("Users-Service | Error: ", error);
             throw error;
         }
     }
@@ -219,126 +203,154 @@ export class UserService {
         profileId: number,
         updates: { name?: string; firstLastName?: string; secondLastName?: string },
         file: Express.Multer.File | undefined,
-    )
-        {
-            try {
-                return await this.dataSource.transaction(async (manager) => {
-                    const repo = manager.getRepository(UserProfile);
-                    const profile = await repo.findOne({ where: { profileId } });
+    ) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                const repo = manager.getRepository(UserProfile);
 
-                    if (!profile) {
-                        throw new NotFoundException("User-Service | UPD-01: Profile not found.");
+                const profileReference = await repo.findOne({
+                    where: {
+                        profileId: profileId
                     }
-
-                    const previousPicture = profile.profilePicture;
-
-                    await repo.update(profileId, {
-                        ...(updates.name && { name: updates.name }),
-                        ...(updates.firstLastName && { firstLastName: updates.firstLastName }),
-                        ...(updates.secondLastName !== undefined && { secondLastName: updates.secondLastName }),
-                        ...(file && { profilePicture: file.filename }),
-                    });
-
-                    if (file && previousPicture !== "default-profile-picture.png") {
-                        await fs.promises.unlink(join("./profile-pictures", previousPicture)).catch(() => {});
-                    }
-                    
-                    return repo.findOne({ where: { profileId } });
                 });
 
-            } catch (error) {
-                if (file) await fs.promises.unlink(file.path).catch(() => {});
-                console.error("User-Service | Error: ", error);
-                throw error;
-            }
-        }
+                if (!profileReference) {
+                    throw new NotFoundException("Users-Service | UP-01: Reference lost.");
+                }
 
-        private async startSensitiveOperation(
-            credId: number,
-            type: TokenType.PASSWORD_CHANGE | TokenType.EMAIL_CHANGE | TokenType.PHONE_CHANGE,
-            mailer: { template: MailerTemplate; endpoint: MailerEndpoint; subject: MailerSubject },
-            name: string,
-            email: string,
-            manager: EntityManager,
-        )   {
-                const { plainToken } = await this.tokenService.generateToken(
-                    credId,
-                    type,
-                    "SENSITIVE_OPERATION_START_FLOW",
-                    manager,
-                );
+                const previousPicture = profileReference.profilePicture;
 
-                const emailStructure = this.mailerService.buildEmail(email, mailer.template, name, {
-                    urlKey: MailerURL.PUBLIC_WEB_URL,
-                    endpoint: mailer.endpoint,
-                    token: plainToken
+                await repo.update(profileId, {
+                    ...(updates.name && { name: updates.name }),
+                    ...(updates.firstLastName && { firstLastName: updates.firstLastName }),
+                    ...(updates.secondLastName !== undefined && { secondLastName: updates.secondLastName }),
+                    ...(file && { profilePicture: file.filename }),
                 });
 
-                await this.mailerService.sendEmail(mailer.subject, emailStructure);
+                if (file && previousPicture !== "default-profile-picture.png") {
+                    await fs.promises.unlink(join("./profile-pictures", previousPicture)).catch(() => {});
+                }
+                
+                return repo.findOne({
+                    where: {
+                        profileId: profileId
+                    }
+                });
+            });
 
-                return { operationToken: plainToken };
+        } catch (error) {
+            if (file) await fs.promises.unlink(file.path).catch(() => {});
+
+            console.error("Users-Service | Error: ", error);
+            throw error;
         }
+    }
 
-        async initiatePasswordChange(credId: number, name: string, email: string) {
-            return this.dataSource.transaction((manager) => 
-                this.startSensitiveOperation(
-                    credId,
-                    TokenType.PASSWORD_CHANGE,
-                    {
-                        template: MailerTemplate.PASSWORD_CHANGE,
-                        endpoint: MailerEndpoint.PASSWORD_CHANGE,
-                        subject: MailerSubject.PASSWORD_CHANGE,
-                    },
-                    name,
-                    email,
-                    manager,
-                )
+    private async startSensitiveOperation(
+        credId: number,
+        type: TokenType.PASSWORD_CHANGE | TokenType.EMAIL_CHANGE | TokenType.PHONE_CHANGE,
+        mailer: { template: MailerTemplate; endpoint: MailerEndpoint; subject: MailerSubject },
+        name: string,
+        email: string,
+        manager: EntityManager
+    ) {
+        const { plainToken } = await this.tokenService.generateToken(
+            credId,
+            type,
+            "SENSITIVE_OPERATION_START_FLOW",
+            manager
+        );
+
+        const emailStructure = this.mailerService.buildEmail(email, mailer.template, name, {
+            urlKey: MailerURL.PUBLIC_WEB_URL,
+            endpoint: mailer.endpoint,
+            token: plainToken
+        });
+
+        await this.mailerService.sendEmail(mailer.subject, emailStructure);
+    }
+
+    async initiatePasswordChange(credId: number, name: string, email: string) {
+        return this.dataSource.transaction(async (manager) => {
+            await this.startSensitiveOperation(
+                credId,
+                TokenType.PASSWORD_CHANGE,
+                {
+                    template: MailerTemplate.PASSWORD_CHANGE,
+                    endpoint: MailerEndpoint.PASSWORD_CHANGE,
+                    subject: MailerSubject.PASSWORD_CHANGE,
+                },
+                name,
+                email,
+                manager
             );
-        }
+        });
+    }
 
-        async initiateEmailChange(credId: number, name: string, email: string) {
-            return this.dataSource.transaction((manager) =>
-                this.startSensitiveOperation(
-                    credId,
-                    TokenType.EMAIL_CHANGE,
-                    {
-                        template: MailerTemplate.EMAIL_CHANGE,
-                        endpoint: MailerEndpoint.EMAIL_CHANGE,
-                        subject: MailerSubject.EMAIL_CHANGE,
-                    },
-                    name,
-                    email,
-                    manager,
-                )
+    async initiateEmailChange(credId: number, name: string, email: string) {
+        return this.dataSource.transaction(async (manager) => {
+            await this.startSensitiveOperation(
+                credId,
+                TokenType.EMAIL_CHANGE,
+                {
+                    template: MailerTemplate.EMAIL_CHANGE,
+                    endpoint: MailerEndpoint.EMAIL_CHANGE,
+                    subject: MailerSubject.EMAIL_CHANGE,
+                },
+                name,
+                email,
+                manager
             );
-        }
+        });
+    }
 
-        async initiatePhoneChange(credId: number, name: string, email: string) {
-            return this.dataSource.transaction((manager) =>
-                this.startSensitiveOperation(
-                    credId,
-                    TokenType.PHONE_CHANGE,
-                    {
-                        template: MailerTemplate.PHONE_CHANGE,
-                        endpoint: MailerEndpoint.PHONE_CHANGE,
-                        subject: MailerSubject.PHONE_CHANGE,
-                    },
-                    name,
-                    email,
-                    manager,
-                )
+    async initiatePhoneChange(credId: number, name: string, email: string) {
+        return this.dataSource.transaction(async (manager) => {
+            await this.startSensitiveOperation(
+                credId,
+                TokenType.PHONE_CHANGE,
+                {
+                    template: MailerTemplate.PHONE_CHANGE,
+                    endpoint: MailerEndpoint.PHONE_CHANGE,
+                    subject: MailerSubject.PHONE_CHANGE,
+                },
+                name,
+                email,
+                manager
             );
-        }
+        });
+    }
 
-        async localLogOut(credId: number, userAgent: string) {
-            return this.credentialsService.localLogOut(credId, userAgent);
+    async localLogOut(credId: number, userAgent: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                await this.credentialsService.localLogOut(credId, userAgent, manager);
+            });
+        } catch (error) {
+            console.error("Users-Service | Error: ", error);
+            throw error;
         }
+    }
 
-        async selectedLogOut(credId: number, userAgent: string) {
-            return this.credentialsService.selectedLogOut(credId, userAgent);
+    async selectedLogOut(credId: number, userAgent: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                await this.credentialsService.selectedLogOut(credId, userAgent, manager);
+            });
+        } catch (error) {
+            console.error("Users-Service | Error: ", error);
+            throw error;
         }
+    }
 
-        async logOutAll(credId: number) {
-            return this.credentialsService.logOutAll(credId);
+    async logOutAll(credId: number) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                await this.credentialsService.logOutAll(credId, manager);
+            });
+        } catch (error) {
+            console.error("Users-Service | Error: ", error);
+            throw error;
         }
+    }
 }
