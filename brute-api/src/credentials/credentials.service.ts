@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, NotFoundException, InternalServerErrorException, BadRequestException } from "@nestjs/common";
 
-import { DataSource, EntityManager, Not, IsNull } from "typeorm";
+import { DataSource, EntityManager, Not, In, IsNull } from "typeorm";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 import * as bcrypt from "bcryptjs";
@@ -400,6 +400,51 @@ export class CredentialsService {
         await repo.update(credId, {
             passwordHash: newPasswordHash
         });
+    }
+
+    async initializePasswordReset(identifier: string, userAgent: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                const repo = manager.getRepository(Credential);
+
+                const credReference = await repo.findOne({
+                    where: {
+                        identifier: identifier,
+                        status: In([CredentialStatus.ACTIVATED])
+                    },
+                    relations: [
+                        "profile"
+                    ]
+                });
+
+                if (!credReference) {
+                    throw new BadRequestException("Credentials-Service | IPR-01: Invalid request.");
+                }
+
+                const { plainToken } = await this.tokenService.generateToken(
+                    credReference.credId,
+                    TokenType.PASSWORD_RESET,
+                    userAgent,
+                    manager
+                );
+
+                const emailStructure = this.mailerService.buildEmail(
+                    credReference.profile.email,
+                    MailerTemplate.PASSWORD_RESET,
+                    credReference.profile.name,
+                    {
+                        urlKey: MailerURL.PUBLIC_WEB_URL,
+                        endpoint: MailerEndpoint.PASSWORD_RESET,
+                        token: plainToken
+                    }
+                );
+
+                await this.mailerService.sendEmail(MailerSubject.PASSWORD_RESET, emailStructure);
+            });
+        } catch (error) {
+            console.error("Credentials-Service | Error: ", error);
+            throw error;
+        }
     }
 
     async resetPassword(dto: ResetPasswordDTO, name: string, email: string, credId: number, tokenId: number) {
