@@ -14,7 +14,6 @@ import { TokenType } from "src/tokens/token-type.enum";
 import { MailerTemplate, MailerURL, MailerEndpoint, MailerSubject, EmailMessage } from "src/mailer/mailer.enums";
 
 import { Credential } from "./entities/credentials-entity";
-import { UserProfile } from "src/users/entities/user-profile-entity";
 
 import { MFAEnrollmentDTO, CredAuthDTO, MFAAuthDTO, ResetPasswordDTO, ChangePasswordDTO, ReactivationDTO } from "./dtos/credentials-dtos";
 
@@ -94,7 +93,11 @@ export class CredentialsService {
             manager
         );
 
-        return { credId: credential.credId, plainToken, tokenId };
+        return {
+            credId: credential.credId,
+            tokenId,
+            plainToken
+        };
     }
 
     async hashPassword(password: string) {
@@ -503,37 +506,16 @@ export class CredentialsService {
         await this.mailerService.sendEmail(MailerSubject.NOTIFY_EMAIL_CHANGE, emailStructure);
     }
 
-    async localLogOut(credId: number, userAgent: string) {
-        try {
-            return await this.dataSource.transaction(async (manager) => {
-                await this.tokenService.revokeSession(credId, userAgent, manager);
-            });
-        } catch (error) {
-            console.error("Credentials-Service | Error: ", error);
-            throw error;
-        }
+    async localLogOut(credId: number, userAgent: string, manager: EntityManager) {
+        await this.tokenService.revokeSession(credId, userAgent, manager);
     }
 
-    async selectedLogOut(credId: number, userAgent: string) {
-        try {
-            return await this.dataSource.transaction(async (manager) => {
-                await this.tokenService.revokeSelectedSession(credId, userAgent, manager);
-            });
-        } catch (error) {
-            console.error("Credentials-Service | Error: ", error);
-            throw error;
-        }
+    async selectedLogOut(credId: number, userAgent: string, manager: EntityManager) {
+        await this.tokenService.revokeSelectedSession(credId, userAgent, manager);
     }
 
-    async logOutAll(credId: number) {
-        try {
-            return await this.dataSource.transaction(async (manager) => {
-                await this.tokenService.revokeAllForCredentials(credId, manager);
-            });
-        } catch (error) {
-            console.error("Credentials-Service | Error: ", error);
-            throw error;
-        }
+    async logOutAll(credId: number, manager: EntityManager) {
+        await this.tokenService.revokeAllForCredentials(credId, manager);
     }
 
     async unlockCredentials(identifier: string) {
