@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { EntityManager, In } from "typeorm";
+import { EntityManager, In, Not } from "typeorm";
 import { randomBytes, createHash } from "crypto";
 
 import { Token } from "./entities/token-entity";
@@ -127,12 +127,43 @@ export class TokenService {
         });
     }
 
+    async revokeSession(credId: number, userAgent: string, manager: EntityManager) {
+        const repo = manager.getRepository(Token);
+
+        await repo.update(
+            {
+                credential: { credId: credId },
+                tokenType: In([TokenType.REFRESH, TokenType.SESSION]),
+                userAgent: userAgent
+            },
+            {
+                revoked: true
+            }
+        );
+    }
+
+    async revokeSelectedSession(credId: number, userAgent: string, manager: EntityManager) {
+        const repo = manager.getRepository(Token);
+
+        await repo.update(
+            {
+                credential: { credId: credId },
+                tokenType: Not(TokenType.FRAUD_FLAG),
+                userAgent: userAgent
+            },
+            {
+                revoked: true
+            }
+        );
+    }
+
     async revokeAllForCredentials(credId: number, manager: EntityManager): Promise<void> {
         const repo = manager.getRepository(Token);
 
         await repo.update(
             { 
-                credential: { credId: credId } 
+                credential: { credId: credId },
+                tokenType: Not(TokenType.FRAUD_FLAG)
             },
             {
                 revoked: true

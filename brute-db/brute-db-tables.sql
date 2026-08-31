@@ -74,7 +74,7 @@ CREATE TABLE [dbo].[Credentials](
 
 	CONSTRAINT UQ_Credentials_ProfileId UNIQUE ([profile_id]),
 
-	CONSTRAINT CHK_Credentials_FailedAttempts CHECK ([status] >= 0),
+	CONSTRAINT CHK_Credentials_FailedAttempts CHECK ([failed_attempts] >= 0),
 
 	CONSTRAINT CHK_Status CHECK ([status] IN('PENDING', 'ACTIVATED', 'LOCKED', 'BLOCKED', 'COMPROMISED', 'REACTIVATING', 'DISABLED')),
 

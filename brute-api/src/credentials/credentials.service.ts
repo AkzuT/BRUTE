@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, NotFoundException, InternalServerErrorException, BadRequestException } from "@nestjs/common";
 
-import { DataSource, EntityManager, Not, IsNull } from "typeorm";
+import { DataSource, EntityManager, Not, In, IsNull } from "typeorm";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 import * as bcrypt from "bcryptjs";
@@ -85,42 +85,50 @@ export class CredentialsService {
         const newCredential = repo.create({
             profile: { profileId: profileId },
             identifier: identifier,
-            // passwordHash:
-            // mfaEnrolled:
-            // encryptedMfaSecret:
-            // mfaSecretIssuedAt:
-
-            // failedAttempts:
-            // lockedUntil:
-            // status:
         });
 
         const credential = await repo.save(newCredential);
 
-        const activationToken = await this.tokenService.generateToken(
+        const { plainToken, tokenId } = await this.tokenService.generateToken(
             credential.credId,
             TokenType.ACTIVATION,
             "SYSTEM_ACTIVATION_FLOW",
             manager
         );
 
-        return activationToken;
+        return {
+            credId: credential.credId,
+            tokenId,
+            plainToken
+        };
     }
 
-    private async generateMFAData(profile: UserProfile, credential: Credential, manager: EntityManager) {
+    async hashPassword(password: string) {
+        return await bcrypt.hash(password, 10);
+    }
+
+    async activateCredentials(credId: number, hashedPassword: string, manager: EntityManager) {
+        const repo = manager.getRepository(Credential);
+
+        await repo.update(credId, {
+            passwordHash: hashedPassword,
+        });
+    }
+
+    private async generateMFAData(email: string, credId: number, manager: EntityManager) {
         const repo = manager.getRepository(Credential);
 
         const key = otplib.generateSecret();
         
         const otpAuthUrl = otplib.generateURI({
             issuer: "BRUTE",
-            label: profile.email,
+            label: email,
             secret: key
         });
 
         const encryptedKey = this.encrypt(key);
 
-        await repo.update(credential.credId, {
+        await repo.update(credId, {
             encryptedMfaSecret: encryptedKey,
             mfaSecretIssuedAt: new Date(),
         });
@@ -131,20 +139,9 @@ export class CredentialsService {
         };
     }
 
-    async hashPassword(password: string) {
-        return await bcrypt.hash(password, 10);
-    }
-
-    async activateCredentials(profile: UserProfile, credential: Credential, hashedPassword: string, manager: EntityManager) {
-        const repo = manager.getRepository(Credential);
-
-        const mfaData = await this.generateMFAData(profile, credential, manager);
-
-        const { key, otpAuthUrl } = mfaData;
-
-        await repo.update(credential.credId, {
-            passwordHash: hashedPassword,
-        });
+    async initiateMFAEnrollment(email: string, credId: number) {
+        return await this.dataSource.transaction(async (manager) => {
+            const { key, otpAuthUrl } = await this.generateMFAData(email, credId, manager);
 
         return {
             key,
@@ -354,6 +351,18 @@ export class CredentialsService {
         }
     }
 
+    async reauthenticate(credential: Credential, password: string, otp: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                await this.validateCredentials(credential, password, manager);
+                await this.validateMFA(credential, otp, manager);
+            });
+        } catch (error) {
+            console.error("Credentials-Service | Error: ", error);
+            throw error;
+        }
+    }
+
     async credAuthentication(dto: CredAuthDTO) {
         try {
             return await this.dataSource.transaction(async (manager) => {
@@ -442,6 +451,51 @@ export class CredentialsService {
         await repo.update(credId, {
             passwordHash: newPasswordHash
         });
+    }
+
+    async initializePasswordReset(identifier: string, userAgent: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                const repo = manager.getRepository(Credential);
+
+                const credReference = await repo.findOne({
+                    where: {
+                        identifier: identifier,
+                        status: In([CredentialStatus.ACTIVATED])
+                    },
+                    relations: [
+                        "profile"
+                    ]
+                });
+
+                if (!credReference) {
+                    throw new BadRequestException("Credentials-Service | IPR-01: Invalid request.");
+                }
+
+                const { plainToken } = await this.tokenService.generateToken(
+                    credReference.credId,
+                    TokenType.PASSWORD_RESET,
+                    userAgent,
+                    manager
+                );
+
+                const emailStructure = this.mailerService.buildEmail(
+                    credReference.profile.email,
+                    MailerTemplate.PASSWORD_RESET,
+                    credReference.profile.name,
+                    {
+                        urlKey: MailerURL.PUBLIC_WEB_URL,
+                        endpoint: MailerEndpoint.PASSWORD_RESET,
+                        token: plainToken
+                    }
+                );
+
+                await this.mailerService.sendEmail(MailerSubject.PASSWORD_RESET, emailStructure);
+            });
+        } catch (error) {
+            console.error("Credentials-Service | Error: ", error);
+            throw error;
+        }
     }
 
     async resetPassword(dto: ResetPasswordDTO, name: string, email: string, credId: number, tokenId: number) {
@@ -546,6 +600,18 @@ export class CredentialsService {
         );
 
         await this.mailerService.sendEmail(MailerSubject.NOTIFY_EMAIL_CHANGE, emailStructure);
+    }
+
+    async localLogOut(credId: number, userAgent: string, manager: EntityManager) {
+        await this.tokenService.revokeSession(credId, userAgent, manager);
+    }
+
+    async selectedLogOut(credId: number, userAgent: string, manager: EntityManager) {
+        await this.tokenService.revokeSelectedSession(credId, userAgent, manager);
+    }
+
+    async logOutAll(credId: number, manager: EntityManager) {
+        await this.tokenService.revokeAllForCredentials(credId, manager);
     }
 
     async unlockCredentials(identifier: string) {
