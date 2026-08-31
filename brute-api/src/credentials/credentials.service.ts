@@ -15,7 +15,6 @@ import { ProfileType } from "src/users/profile-type.enum";
 import { CredentialStatus, SentinelStatus } from "./credentials.enums";
 import { TokenType } from "src/tokens/token-type.enum";
 
-import { UserProfile } from "src/users/entities/user-profile-entity";
 import { MailerTemplate, MailerURL, MailerEndpoint, MailerSubject, EmailMessage } from "src/mailer/mailer.enums";
 
 import { MFAEnrollmentDTO, CredAuthDTO, MFAAuthDTO, ResetPasswordDTO, ChangePasswordDTO, ReactivationDTO } from "./dtos/credentials-dtos";
@@ -142,11 +141,12 @@ export class CredentialsService {
     async initiateMFAEnrollment(email: string, credId: number) {
         return await this.dataSource.transaction(async (manager) => {
             const { key, otpAuthUrl } = await this.generateMFAData(email, credId, manager);
-
-        return {
-            key,
-            otpAuthUrl
-        };
+        
+            return {
+                key,
+                otpAuthUrl
+            };
+        });
     }
 
     async sentinel(profileType: ProfileType, email: string, credential: Credential) {
