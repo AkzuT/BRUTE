@@ -2,7 +2,7 @@ import { Entity, PrimaryGeneratedColumn, OneToOne, JoinColumn, Column, OneToMany
 
 import { UserProfile } from "../../users/entities/user-profile-entity";
 
-import { CredentialStatus } from "../../credentials/credential-status.enum";
+import { CredentialStatus } from "../credentials.enums";
 
 import { Token } from "src/tokens/entities/token-entity";
 
