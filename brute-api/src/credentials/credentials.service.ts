@@ -6,15 +6,17 @@ import * as crypto from "crypto";
 import * as bcrypt from "bcryptjs";
 import * as otplib from "otplib";
 
+import { Credential } from "./entities/credentials-entity";
+
 import { TokenService } from "src/tokens/tokens.service";
 import { MailerService } from "src/mailer/mailer.service";
 
-import { CredentialStatus } from "./credential-status.enum";
+import { ProfileType } from "src/users/profile-type.enum";
+import { CredentialStatus, SentinelStatus } from "./credentials.enums";
 import { TokenType } from "src/tokens/token-type.enum";
-import { MailerTemplate, MailerURL, MailerEndpoint, MailerSubject, EmailMessage } from "src/mailer/mailer.enums";
 
-import { Credential } from "./entities/credentials-entity";
 import { UserProfile } from "src/users/entities/user-profile-entity";
+import { MailerTemplate, MailerURL, MailerEndpoint, MailerSubject, EmailMessage } from "src/mailer/mailer.enums";
 
 import { MFAEnrollmentDTO, CredAuthDTO, MFAAuthDTO, ResetPasswordDTO, ChangePasswordDTO, ReactivationDTO } from "./dtos/credentials-dtos";
 
@@ -148,6 +150,55 @@ export class CredentialsService {
             key,
             otpAuthUrl
         };
+    }
+
+    async sentinel(profileType: ProfileType, email: string, credential: Credential) {
+        try {
+            if (credential.status !== CredentialStatus.PENDING && CredentialStatus.REACTIVATING) {
+                throw new BadRequestException("Credentials-Service | Sentinel-01: Invalid request.");
+            }
+            
+            switch (true) {
+                case !credential.passwordHash && !credential.mfaEnrolled && !credential.mfaSecretIssuedAt:
+                    if (profileType === ProfileType.UNPRIVILEGED) {
+                        return {
+                            status: SentinelStatus.INCONSISTENT_REGISTRATION
+                        }
+                    } else if (profileType === ProfileType.PRIVILEGED) {
+                        return {
+                            status: SentinelStatus.CREDENTIALS_DEFINITION_REQUIRED
+                        };
+                    }
+
+                    // break;
+
+                case !!credential.passwordHash && !credential.mfaEnrolled && !credential.mfaSecretIssuedAt:
+                    const { key, otpAuthUrl } = await this.initiateMFAEnrollment(email, credential.credId);
+
+                    return {
+                        status: SentinelStatus.MFA_DATA_GENERATED,
+                        mfaData: {
+                            key,
+                            otpAuthUrl
+                        }
+                    };
+
+                    // break;
+                
+                case !!credential.passwordHash && !credential.mfaEnrolled && !!credential.mfaSecretIssuedAt:
+                    return {
+                        status: SentinelStatus.MFA_ENROLLMENT_CONFIRMATION_REQUIRED
+                    };
+                    
+                    // break;
+
+                default:
+                    throw new BadRequestException("Credentials-Service | Sentinel-02: Invalid request");
+            }
+        } catch (error) {
+            console.error("Credentials-Service | Error: ", error);
+            throw error;
+        }
     }
 
     async mfaEnrollment(dto: MFAEnrollmentDTO, credential: Credential, tokenId: number) {
