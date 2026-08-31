@@ -91,34 +91,6 @@ export class TokenService {
         return { refreshToken, sessionToken };
     }
 
-    async validateToken(tokenType: TokenType, plainToken: string, manager: EntityManager): Promise<Token> {
-        const repo = manager.getRepository(Token);
-
-        const tokenHash = createHash("sha256").update(plainToken).digest("hex");
-
-        const tokenReference = await repo.findOne({ 
-            where: {
-                tokenType: tokenType,
-                tokenHash: tokenHash
-            },
-            relations: ["credential", "credential.profile"],
-         });
-
-        if (!tokenReference) {
-            throw new UnauthorizedException("Authentication Guard | VT-01: Invalid operation.");
-        }
-
-        if (tokenReference.revoked) {
-            throw new UnauthorizedException("Authentication Guard | VT-02: Invalid operation.");
-        }
-
-        if (tokenReference.expiresAt.getTime() < Date.now()) {
-            throw new UnauthorizedException("Authentication Guard | VT-03: Invalid operation.");
-        }
-
-        return tokenReference;
-    }
-
     async revokeToken(tokenId: number, manager: EntityManager): Promise<void> {
         const repo = manager.getRepository(Token);
 
