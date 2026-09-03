@@ -29,12 +29,12 @@ export class MailerService {
     signURL(email: string): string {
         return createHmac("sha256", Buffer.from(this.hmacKey, "hex"))
         .update(email)
-        .digest("base64");
+        .digest("hex");
     }
 
     verifyURLSignature(email: string, signature: string): boolean {
-        const expected = Buffer.from(this.signURL(email));
-        const provided = Buffer.from(signature);
+        const expected = Buffer.from(this.signURL(email), "hex");
+        const provided = Buffer.from(signature, "hex");
 
         if (expected.length !== provided.length) return false
 
