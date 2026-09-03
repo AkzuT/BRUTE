@@ -22,7 +22,10 @@ import { AppService } from "./app.service";
 import { AppController } from "./app.controller";
 
 import { AuthGuardModule } from "./authentication-guard/authentication-guard.module";
+import { AuthenticationGuard } from "./authentication-guard/authentication.guard";
+
 import { RolesGuardModule } from './roles-guard/roles-guard.module';
+import { RolesGuard } from "./roles-guard/roles-guard";
 
 import { APP_GUARD } from "@nestjs/core";
 
@@ -72,11 +75,11 @@ import { APP_GUARD } from "@nestjs/core";
     AppService,
     {
       provide: APP_GUARD,
-      useClass: AuthGuardModule
+      useClass: AuthenticationGuard
     },
     {
       provide: APP_GUARD,
-      useClass: RolesGuardModule
+      useClass: RolesGuard
     }
   ],
 })

@@ -1,12 +1,31 @@
 import { IsNotEmpty, IsString, MinLength, MaxLength, IsNumberString, Length, IsBoolean  } from "class-validator";
+
 import { ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 
-class PrivilegedActivationDTO {
+class IdentifierDTO {
     @IsNotEmpty()
     @IsString()
-    token!: string;
+    @MaxLength(255)
+    identifier!: string;
+}
 
+class PasswordDTO {
+    @IsNotEmpty()
+    @IsString()
+    @MinLength(12)
+    @MaxLength(20)
+    password!: string;
+}
+
+class UserAgentDTO {
+    @IsNotEmpty()
+    @IsString()
+    @MaxLength(255)
+    userAgent!: string;
+}
+
+class PrivilegedActivationDTO {
     @IsNotEmpty()
     @IsString()
     @MinLength(12)
@@ -55,7 +74,37 @@ class MFAAuthDTO {
     userAgent!: string;
 }
 
-class ResetPasswordDTO {
+class ReauthenticateDTO {
+    @IsNotEmpty()
+    @IsString()
+    @MinLength(12)
+    @MaxLength(20)
+    password!: string;
+
+    @IsNotEmpty()
+    @IsNumberString()
+    @Length(6, 6)
+    otp!: string;
+}
+
+class InitiatePasswordResetDTO {
+    @IsNotEmpty()
+    @IsString()
+    @MaxLength(255)
+    identifier!: string;
+
+    @IsNotEmpty()
+    @IsString()
+    @MaxLength(255)
+    userAgent!: string;
+}
+
+class PasswordResetDTO {
+    @IsNotEmpty()
+    @IsNumberString()
+    @Length(6, 6)
+    otp!: string;
+    
     @IsNotEmpty()
     @IsString()
     @MinLength(12)
@@ -63,14 +112,10 @@ class ResetPasswordDTO {
     newPassword!: string;
 }
 
-class ChangePasswordDTO {
+class PasswordChangeDTO {
     @ValidateNested()
-    @Type(() => CredAuthDTO)
-    credentials!: CredAuthDTO;
-
-    @ValidateNested()
-    @Type(() => MFAAuthDTO)
-    mfaData!: MFAAuthDTO;
+    @Type(() => ReauthenticateDTO)
+    credentials!: ReauthenticateDTO;
 
     @IsNotEmpty()
     @IsString()
@@ -88,11 +133,16 @@ class ReactivationDTO {
 }
 
 export {
+    IdentifierDTO,
+    PasswordDTO,
+    UserAgentDTO,
     PrivilegedActivationDTO,
     MFAEnrollmentDTO,
     CredAuthDTO,
     MFAAuthDTO,
-    ResetPasswordDTO,
-    ChangePasswordDTO,
+    ReauthenticateDTO,
+    InitiatePasswordResetDTO,
+    PasswordResetDTO,
+    PasswordChangeDTO,
     ReactivationDTO
 }

@@ -1,5 +1,5 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { EntityManager, In, Not } from "typeorm";
+import { Injectable } from "@nestjs/common";
+import { DataSource, EntityManager, In, Not } from "typeorm";
 import { randomBytes, createHash } from "crypto";
 
 import { Token } from "./entities/token-entity";
@@ -8,6 +8,10 @@ import { FIXED_TOKEN_DURATIONS_MS, REFRESH_DURATION_MS } from "./token-duration"
 
 @Injectable()
 export class TokenService {
+    constructor (
+        private readonly dataSource: DataSource
+    ) {}
+
     private resolveExpiresAt(tokenType: TokenType, rememberMe: boolean | undefined): Date {
         const now = Date.now();
 
@@ -72,7 +76,7 @@ export class TokenService {
         userAgent: string,
         manager: EntityManager,
         options: { rememberMe?: boolean },
-    ): Promise <{ refreshToken: string; sessionToken: string; }> {
+    ): Promise <{ refreshToken: string; rememberMe: boolean, sessionToken: string; }> {
         const { plainToken: refreshToken } = await this.generateToken(
             credId,
             TokenType.REFRESH,
@@ -81,6 +85,8 @@ export class TokenService {
             { rememberMe: options.rememberMe },
         );
 
+        const rememberMe = options.rememberMe ?? false;
+
         const { plainToken: sessionToken } = await this.generateToken(
             credId,
             TokenType.SESSION,
@@ -88,7 +94,18 @@ export class TokenService {
             manager,
         );
 
-        return { refreshToken, sessionToken };
+        return { refreshToken, rememberMe, sessionToken };
+    }
+
+    async refreshSession(credId: number, userAgent: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                return await this.generateToken(credId, TokenType.SESSION, userAgent, manager);
+            });
+        } catch (error) {
+            console.error("Tokens-Service | Error: ", error);
+            throw error;
+        }
     }
 
     async revokeToken(tokenId: number, manager: EntityManager): Promise<void> {

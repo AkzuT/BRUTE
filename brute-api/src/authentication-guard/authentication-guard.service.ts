@@ -23,7 +23,8 @@ export class AuthenticationGuardService {
             },
             relations: [
                 "credential",
-                "credential.profile"
+                "credential.profile",
+                "credential.profile.user"
             ]
         });
 
