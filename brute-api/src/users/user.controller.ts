@@ -1,5 +1,7 @@
 import { Controller, Post, UseInterceptors, BadRequestException, UploadedFile, Body, Patch, Get, Param } from "@nestjs/common";
 
+import { Throttle } from "@nestjs/throttler";
+
 import { FileInterceptor } from "@nestjs/platform-express";
 
 import { IsPublic } from "src/authentication-guard/authentication-guard-decorators/public.decorator";
@@ -26,6 +28,7 @@ export class UserController {
     ) {}
 
     @IsPublic()
+    @Throttle({ default: { ttl: 60000, limit: 5 } })
     @Post("register")
     @UseInterceptors(FileInterceptor("picture", {
         fileFilter: (req, file, cb) => {

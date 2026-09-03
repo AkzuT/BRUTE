@@ -3,6 +3,9 @@ import { ConfigModule } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { ScheduleModule } from "@nestjs/schedule";
 
+import { ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerGuard } from "@nestjs/throttler";
+
 import { getEnvCors } from "./brute-api-config/env-config";
 
 import { UserModule } from "./users/user.module";
@@ -35,15 +38,21 @@ import { APP_GUARD } from "@nestjs/core";
       isGlobal: true,
     }),
 
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 10,
+    }]),
+    
+    AuthGuardModule,
+    RolesGuardModule,
+
     UserModule,
     CredentialsModule,
     TokensModule,
 
-    ScheduleModule.forRoot(),
     MailerModule,
 
-    AuthGuardModule,
-    RolesGuardModule,
+    ScheduleModule.forRoot(),
 
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
@@ -73,6 +82,10 @@ import { APP_GUARD } from "@nestjs/core";
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: AuthenticationGuard
