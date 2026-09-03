@@ -1,7 +1,6 @@
 import { Injectable, ConflictException, BadRequestException, NotFoundException } from "@nestjs/common";
 
-import { DataSource, Repository, EntityManager } from "typeorm";
-import { InjectRepository } from "@nestjs/typeorm";
+import { DataSource, EntityManager } from "typeorm";
 
 import * as fs from "fs";
 import { join } from "path";
@@ -10,11 +9,11 @@ import { User } from "./entities/user-entity";
 import { UserPhone } from "./entities/user-phone-entity";
 import { UserProfile } from "./entities/user-profile-entity";
 
-import { RegUserUnprivileged, RegUserPrivileged } from "./dtos/user-dtos";
-
 import { ProfileType } from "./profile-type.enum";
 import { TokenType } from "src/tokens/token-type.enum";
 import { MailerTemplate, MailerURL, MailerEndpoint, MailerSubject, EmailMessage } from "src/mailer/mailer.enums";
+
+import { RegUserUnprivileged, RegUserPrivileged, UpdateProfileDTO } from "./dtos/user-dtos";
 
 import { CredentialsService } from "src/credentials/credentials.service";
 import { TokenService } from "src/tokens/tokens.service";
@@ -199,11 +198,7 @@ export class UserService {
         }
     }
 
-    async updateProfileData(
-        profileId: number,
-        updates: { name?: string; firstLastName?: string; secondLastName?: string },
-        file: Express.Multer.File | undefined,
-    ) {
+    async updateProfile(profileId: number, dto: UpdateProfileDTO, file: Express.Multer.File | undefined) {
         try {
             return await this.dataSource.transaction(async (manager) => {
                 const repo = manager.getRepository(UserProfile);
@@ -221,9 +216,9 @@ export class UserService {
                 const previousPicture = profileReference.profilePicture;
 
                 await repo.update(profileId, {
-                    ...(updates.name && { name: updates.name }),
-                    ...(updates.firstLastName && { firstLastName: updates.firstLastName }),
-                    ...(updates.secondLastName !== undefined && { secondLastName: updates.secondLastName }),
+                    ...(dto.name && { name: dto.name }),
+                    ...(dto.firstLastName && { firstLastName: dto.firstLastName }),
+                    ...(dto.secondLastName !== undefined && { secondLastName: dto.secondLastName }),
                     ...(file && { profilePicture: file.filename }),
                 });
 
@@ -270,7 +265,7 @@ export class UserService {
         await this.mailerService.sendEmail(mailer.subject, emailStructure);
     }
 
-    async initiatePasswordChange(credId: number, name: string, email: string) {
+    async initiatePasswordChange(name: string, email: string, credId: number) {
         return this.dataSource.transaction(async (manager) => {
             await this.startSensitiveOperation(
                 credId,
@@ -287,7 +282,7 @@ export class UserService {
         });
     }
 
-    async initiateEmailChange(credId: number, name: string, email: string) {
+    async initiateEmailChange(name: string, email: string, credId: number) {
         return this.dataSource.transaction(async (manager) => {
             await this.startSensitiveOperation(
                 credId,
@@ -304,67 +299,15 @@ export class UserService {
         });
     }
 
-    async initiatePhoneChange(credId: number, name: string, email: string) {
-        return this.dataSource.transaction(async (manager) => {
-            await this.startSensitiveOperation(
-                credId,
-                TokenType.PHONE_CHANGE,
-                {
-                    template: MailerTemplate.PHONE_CHANGE,
-                    endpoint: MailerEndpoint.PHONE_CHANGE,
-                    subject: MailerSubject.PHONE_CHANGE,
-                },
-                name,
-                email,
-                manager
-            );
-        });
-    }
-
-    async updatePhone(
-        profileId: number,
-        userId: string,
-        newPhone: string,
-        name: string,
-        email: string,
-        credId: number,
-        tokenId: number,
-    ) {
-        return this.dataSource.transaction(async (manager) => {
-            await this.managePhone(newPhone, userId, true, manager);
-
-            const repo = manager.getRepository(UserProfile);
-            await repo.update(profileId, { phone: newPhone });
-
-            await this.tokenService.revokeToken(tokenId, manager);
-
-            const { plainToken: fraudFlagToken } = await this.tokenService.generateToken(
-                credId,
-                TokenType.FRAUD_FLAG,
-                "POSSIBLE_FRAUD_HANDLING_FLOW",
-                manager,
-            );
-
-            const emailStructure = this.mailerService.buildEmail(email, MailerTemplate.NOTIFY_EVENT, name, {
-                message: EmailMessage.NOTIFY_PHONE_CHANGE,
-                urlKey: MailerURL.PUBLIC_WEB_URL,
-                endpoint: MailerEndpoint.FRAUD_FLAG,
-                token: fraudFlagToken,
-            });
-
-            await this.mailerService.sendEmail(MailerSubject.NOTIFY_PHONE_CHANGE, emailStructure);
-        });
-    }
-
     async requestEmailChange(
+        name: string,
+        newEmail: string,
         credId: number,
         tokenId: number,
-        newEmail: string,
-        name: string,
     ) {
-        return this.dataSource.transaction(async (manager) => {
+        return await this.dataSource.transaction(async (manager) => {
             await this.tokenService.revokeToken(tokenId, manager);
-
+            
             const { plainToken } = await this.tokenService.generateToken(
                 credId,
                 TokenType.EMAIL_CHANGE,
@@ -387,23 +330,79 @@ export class UserService {
 
     async confirmEmailChange(
         profileId: number,
-        credId: number,
         name: string,
+        oldEmail: string,
         newEmail: string,
+        credId: number,
         signature: string,
-        tokenId: number,
     ) {
         if (!this.mailerService.verifyURLSignature(newEmail, signature)) {
             throw new BadRequestException("Users-Service | CEC-01: Invalid or tampered confirmation link.");
         }
 
-        return this.dataSource.transaction(async (manager) => {
+        return await this.dataSource.transaction(async (manager) => {
             const repo = manager.getRepository(UserProfile);
+
+            await this.credentialsService.updateIdentifier(name, oldEmail, newEmail, credId, manager);
+
             await repo.update(profileId, { email: newEmail });
 
-            await this.tokenService.revokeToken(tokenId, manager);
+            await this.credentialsService.logOutAll(credId, manager);
+        });
+    }
 
-            await this.credentialsService.updateIdentifier(name, newEmail, credId, manager);
+    async initiatePhoneChange(name: string, email: string, credId: number) {
+        return this.dataSource.transaction(async (manager) => {
+            await this.startSensitiveOperation(
+                credId,
+                TokenType.PHONE_CHANGE,
+                {
+                    template: MailerTemplate.PHONE_CHANGE,
+                    endpoint: MailerEndpoint.PHONE_CHANGE,
+                    subject: MailerSubject.PHONE_CHANGE,
+                },
+                name,
+                email,
+                manager
+            );
+        });
+    }
+
+    async updatePhone(
+        userId: string,
+        profileId: number,
+        name: string,
+        email: string,
+        newPhone: string,
+        credId: number,
+        tokenId: number,
+    ) {
+        return this.dataSource.transaction(async (manager) => {
+            const repo = manager.getRepository(UserProfile);
+
+            await this.managePhone(newPhone, userId, true, manager);
+
+            await repo.update(profileId, {
+                phone: newPhone
+            });
+
+            const { plainToken } = await this.tokenService.generateToken(
+                credId,
+                TokenType.FRAUD_FLAG,
+                "POSSIBLE_FRAUD_HANDLING_FLOW",
+                manager,
+            );
+
+            const emailStructure = this.mailerService.buildEmail(email, MailerTemplate.NOTIFY_EVENT, name, {
+                message: EmailMessage.NOTIFY_PHONE_CHANGE,
+                urlKey: MailerURL.PUBLIC_WEB_URL,
+                endpoint: MailerEndpoint.FRAUD_FLAG,
+                token: plainToken,
+            });
+
+            await this.mailerService.sendEmail(MailerSubject.NOTIFY_PHONE_CHANGE, emailStructure);
+
+            await this.tokenService.revokeToken(tokenId, manager);
         });
     }
 
