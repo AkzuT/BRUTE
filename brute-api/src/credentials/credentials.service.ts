@@ -1,4 +1,11 @@
-import { Injectable, ConflictException, NotFoundException, InternalServerErrorException, BadRequestException } from "@nestjs/common";
+import {
+    Injectable,
+    ConflictException,
+    NotFoundException,
+    InternalServerErrorException,
+    BadRequestException,
+    ForbiddenException
+} from "@nestjs/common";
 
 import { DataSource, EntityManager, Not, In, IsNull } from "typeorm";
 import { ConfigService } from "@nestjs/config";
@@ -437,7 +444,9 @@ export class CredentialsService {
         try {
             return await this.dataSource.transaction(async (manager) => {
                 if (credential.failedAttempts === 5) {
-                    return await this.tokenService.revokeToken(tokenId, manager);
+                    await this.tokenService.revokeToken(tokenId, manager);
+
+                    throw new ForbiddenException("Credentials-Service | OTPR-01: Too many failed attempts. Please, restart the process from the begining.");
                 }
 
                 await this.validateMFA(credential, otp, manager);
@@ -452,7 +461,9 @@ export class CredentialsService {
         try {
             return await this.dataSource.transaction(async (manager) => {
                 if (credential.failedAttempts === 5) {
-                    return await this.tokenService.revokeToken(tokenId, manager);
+                    await this.tokenService.revokeToken(tokenId, manager);
+
+                    throw new ForbiddenException("Credentials-Service | CR-01: Too many failed attempts. Please, restart the process from the begining.");
                 }
 
                 await this.validateCredentials(credential, password, manager);
@@ -546,6 +557,8 @@ export class CredentialsService {
                 );
                 
                 await this.mailerService.sendEmail(MailerSubject.NOTIFY_PASSWORD_RESET, emailStructure);
+
+                await this.logOutAll(credId, manager);
             });
         } catch (error) {
             console.error("Credentials-Service | Error: ", error);
