@@ -1,5 +1,7 @@
 import { Controller, Post, Body, Res } from "@nestjs/common";
 
+import { Throttle } from "@nestjs/throttler";
+
 import type { Response } from "express";
 
 import { IsPublic } from "src/authentication-guard/authentication-guard-decorators/public.decorator";
@@ -44,6 +46,7 @@ export class CredentialsController {
         );
     }
 
+    @Throttle({ default: { ttl: 60000, limit: 5 } })
     @AllowedTokens(TokenType.ACTIVATION)
     @Post("mfa-enrollment")
     async mfaEnrollment(
@@ -53,6 +56,7 @@ export class CredentialsController {
         return await this.credService.mfaEnrollment(dto, user.credential, user.token.tokenId);
     }
 
+    @Throttle({ default: { ttl: 60000, limit: 5 } })
     @IsPublic()
     @Post("cred-auth")
     async credAuth(
@@ -70,6 +74,7 @@ export class CredentialsController {
         });
     }
 
+    @Throttle({ default: { ttl: 60000, limit: 5 } })
     @AllowedTokens(TokenType.PRE_AUTH)
     @Post("mfa-auth")
     async mfaAuth(
@@ -101,6 +106,7 @@ export class CredentialsController {
         });
     }
 
+    @Throttle({ default: { ttl: 60000, limit: 5 } })
     @IsPublic()
     @Post("reset-password")
     async initiatePasswordReset(
