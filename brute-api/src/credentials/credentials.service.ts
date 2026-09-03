@@ -17,7 +17,7 @@ import { TokenType } from "src/tokens/token-type.enum";
 
 import { MailerTemplate, MailerURL, MailerEndpoint, MailerSubject, EmailMessage } from "src/mailer/mailer.enums";
 
-import { MFAEnrollmentDTO, CredAuthDTO, MFAAuthDTO, ResetPasswordDTO, ChangePasswordDTO, ReactivationDTO } from "./dtos/credentials-dtos";
+import { MFAEnrollmentDTO, CredAuthDTO, MFAAuthDTO, PasswordResetDTO, PasswordChangeDTO, ReactivationDTO } from "./dtos/credentials-dtos";
 
 @Injectable()
 export class CredentialsService {
@@ -151,7 +151,7 @@ export class CredentialsService {
 
     async sentinel(profileType: ProfileType, email: string, credential: Credential) {
         try {
-            if (credential.status !== CredentialStatus.PENDING && CredentialStatus.REACTIVATING) {
+            if (credential.status !== CredentialStatus.PENDING && credential.status !== CredentialStatus.REACTIVATING) {
                 throw new BadRequestException("Credentials-Service | Sentinel-01: Invalid request.");
             }
             
@@ -351,18 +351,6 @@ export class CredentialsService {
         }
     }
 
-    async reauthenticate(credential: Credential, password: string, otp: string) {
-        try {
-            return await this.dataSource.transaction(async (manager) => {
-                await this.validateCredentials(credential, password, manager);
-                await this.validateMFA(credential, otp, manager);
-            });
-        } catch (error) {
-            console.error("Credentials-Service | Error: ", error);
-            throw error;
-        }
-    }
-
     async credAuthentication(dto: CredAuthDTO) {
         try {
             return await this.dataSource.transaction(async (manager) => {
@@ -445,6 +433,37 @@ export class CredentialsService {
         }
     }
 
+    async otpReauthentication(credential: Credential, tokenId: number, otp: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                if (credential.failedAttempts === 5) {
+                    return await this.tokenService.revokeToken(tokenId, manager);
+                }
+
+                await this.validateMFA(credential, otp, manager);
+            });
+        } catch (error) {
+            console.error("Credentials-Service | Error: ", error);
+            throw error;
+        }
+    }
+
+    async credReauthentication(credential: Credential, tokenId: number, password: string, otp: string) {
+        try {
+            return await this.dataSource.transaction(async (manager) => {
+                if (credential.failedAttempts === 5) {
+                    return await this.tokenService.revokeToken(tokenId, manager);
+                }
+
+                await this.validateCredentials(credential, password, manager);
+                await this.validateMFA(credential, otp, manager);
+            });
+        } catch (error) {
+            console.error("Credentials-Service | Error: ", error);
+            throw error;
+        }
+    }
+
     private async updatePasswordHash(credId: number, newPasswordHash: string, manager: EntityManager) {
         const repo = manager.getRepository(Credential);
 
@@ -453,7 +472,7 @@ export class CredentialsService {
         });
     }
 
-    async initializePasswordReset(identifier: string, userAgent: string) {
+    async initiatePasswordReset(identifier: string, userAgent: string) {
         try {
             return await this.dataSource.transaction(async (manager) => {
                 const repo = manager.getRepository(Credential);
@@ -498,7 +517,7 @@ export class CredentialsService {
         }
     }
 
-    async resetPassword(dto: ResetPasswordDTO, name: string, email: string, credId: number, tokenId: number) {
+    async resetPassword(dto: PasswordResetDTO, name: string, email: string, credId: number, tokenId: number) {
         try {
             const newPasswordHash = await this.hashPassword(dto.newPassword);
 
@@ -527,14 +546,14 @@ export class CredentialsService {
                 );
                 
                 await this.mailerService.sendEmail(MailerSubject.NOTIFY_PASSWORD_RESET, emailStructure);
-            })
+            });
         } catch (error) {
             console.error("Credentials-Service | Error: ", error);
             throw error;
         }
     }
 
-    async changePassword(dto: ChangePasswordDTO, name: string, email: string, credId: number, tokenId: number) {
+    async updatePassword(dto: PasswordChangeDTO, name: string, email: string, credId: number, tokenId: number) {
         try {
             const newPasswordHash = await this.hashPassword(dto.newPassword);
 
@@ -563,6 +582,8 @@ export class CredentialsService {
                 );
                 
                 await this.mailerService.sendEmail(MailerSubject.NOTIFY_PASSWORD_CHANGE, emailStructure);
+
+                await this.logOutAll(credId, manager);
             });
         } catch (error) {
             console.error("Credentials-Service | Error: ", error);
@@ -570,16 +591,23 @@ export class CredentialsService {
         }
     }
 
-    async updateIdentifier(name: string, email: string, credId: number, manager: EntityManager) {
+    async updateIdentifier(name: string, oldEmail: string, newEmail: string, credId: number, manager: EntityManager) {
         const repo = manager.getRepository(Credential);
 
         await repo.update(credId, {
-            identifier: email,
+            identifier: newEmail,
             mfaEnrolled: false,
             encryptedMfaSecret: null,
             mfaSecretIssuedAt: null,
             status: CredentialStatus.REACTIVATING,
         });
+
+        const fraudFlag = await this.tokenService.generateToken( 
+            credId,
+            TokenType.FRAUD_FLAG,
+            "POSSIBLE_FRAUD_HANDLING_FLOW",
+            manager
+        );
 
         const mfaReset = await this.tokenService.generateToken( 
             credId,
@@ -588,8 +616,20 @@ export class CredentialsService {
             manager
         );
 
-        const emailStructure = this.mailerService.buildEmail(
-            email,
+        const oldEmailStructure = this.mailerService.buildEmail(
+            oldEmail,
+            MailerTemplate.NOTIFY_EVENT,
+            name,
+            {
+                urlKey: MailerURL.PUBLIC_WEB_URL,
+                endpoint: MailerEndpoint.FRAUD_FLAG,
+                token: fraudFlag.plainToken,
+                message: EmailMessage.NOTIFY_EMAIL_CHANGE
+            }
+        );
+
+        const newEmailStructure = this.mailerService.buildEmail(
+            newEmail,
             MailerTemplate.MFA_RESET,
             name,
             {
@@ -599,7 +639,9 @@ export class CredentialsService {
             }
         );
 
-        await this.mailerService.sendEmail(MailerSubject.NOTIFY_EMAIL_CHANGE, emailStructure);
+        await this.mailerService.sendEmail(MailerSubject.NOTIFY_EMAIL_CHANGE, oldEmailStructure);
+        
+        await this.mailerService.sendEmail(MailerSubject.NOTIFY_EMAIL_CHANGE, newEmailStructure);
     }
 
     async localLogOut(credId: number, userAgent: string, manager: EntityManager) {
