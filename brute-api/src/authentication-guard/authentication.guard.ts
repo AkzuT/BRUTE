@@ -21,22 +21,24 @@ export class AuthenticationGuard implements CanActivate {
         ]);
     }
 
-    private getAllowedToken(context: ExecutionContext): TokenType {
-        return this.reflector.getAllAndOverride<TokenType>("allowedToken", [
+    private getAllowedTokens(context: ExecutionContext): TokenType[] {
+        return this.reflector.getAllAndOverride<TokenType[]>("allowedTokens", [
             context.getHandler(),
             context.getClass(),
         ]);
     }
 
-    private extractToken(request: Request, allowedToken: TokenType): string | undefined {
+    private extractToken(request: Request, allowedTokens: TokenType[]): string | undefined {
         const cookieMap: Partial<Record<TokenType, string>> = {
             [TokenType.PRE_AUTH]: "brute_pat",
             [TokenType.REFRESH]: "brute_rt",
             [TokenType.SESSION]: "brute_st"
         };
 
-        if (allowedToken && cookieMap[allowedToken]) {
-            return request.cookies[cookieMap[allowedToken]];
+        const primaryToken = allowedTokens?.[0];
+
+        if (primaryToken && cookieMap[primaryToken]) {
+            return request.cookies[cookieMap[primaryToken]];
         }
 
         return (request.query["token"] as string) ?? request.params["token"];
@@ -47,7 +49,8 @@ export class AuthenticationGuard implements CanActivate {
 
         const request = context.switchToHttp().getRequest();
 
-        const allowedToken = this.getAllowedToken(context);
+        const allowedToken = this.getAllowedTokens(context);
+        
         const rawToken = this.extractToken(request, allowedToken);
 
         if (!rawToken) {
